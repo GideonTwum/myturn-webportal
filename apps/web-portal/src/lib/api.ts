@@ -53,7 +53,7 @@ export async function apiFetch<T>(
     const hint =
       process.env.NODE_ENV === "development"
         ? ` Cannot reach API at ${API_BASE}. Is the backend running?`
-        : "";
+        : ` (Request base: ${API_BASE}). Check NEXT_PUBLIC_API_URL on Vercel, CORS_ORIGIN on the API, and open /api/health in the browser.`;
     throw new Error(`Network error — could not reach the API.${hint}`);
   }
   if (!res.ok) {
