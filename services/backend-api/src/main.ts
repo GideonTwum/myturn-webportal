@@ -18,7 +18,10 @@ async function bootstrap() {
 
   const corsOrigin = config.get<string>("CORS_ORIGIN")?.trim();
   if (corsOrigin) {
-    const origins = corsOrigin.split(",").map((o) => o.trim()).filter(Boolean);
+    const origins = corsOrigin
+      .split(",")
+      .map((o) => o.trim().replace(/\/+$/, ""))
+      .filter(Boolean);
     app.enableCors({ origin: origins, credentials: true });
     logger.log(`CORS enabled for: ${origins.join(", ")}`);
   } else {
