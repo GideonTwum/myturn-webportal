@@ -1,20 +1,17 @@
 /**
  * API base URL for browser requests.
  * - Development: falls back to local API if NEXT_PUBLIC_API_URL is unset.
- * - Staging/production: NEXT_PUBLIC_API_URL must be set at build time (e.g. https://api.example.com/api).
+ * - Production: set NEXT_PUBLIC_API_URL in the host (e.g. Vercel) so the client bundle points at your API.
+ * Resolving is lazy so `next build` does not throw when the env var is only set at deploy/runtime.
  */
-function resolveApiBase(): string {
+function getApiBase(): string {
   const raw = process.env.NEXT_PUBLIC_API_URL?.trim();
   if (raw) return raw.replace(/\/$/, "");
   if (process.env.NODE_ENV === "development") {
     return "http://localhost:3001/api";
   }
-  throw new Error(
-    "NEXT_PUBLIC_API_URL must be set at build time for staging and production builds.",
-  );
+  return "";
 }
-
-const API_BASE = resolveApiBase();
 
 export function getStoredToken(): string | null {
   if (typeof window === "undefined") return null;
@@ -35,6 +32,12 @@ export async function apiFetch<T>(
   path: string,
   init: RequestInit = {},
 ): Promise<T> {
+  const API_BASE = getApiBase();
+  if (!API_BASE) {
+    throw new Error(
+      "API URL is not configured. Set NEXT_PUBLIC_API_URL (e.g. https://your-api.com/api).",
+    );
+  }
   const token = getStoredToken();
   const headers: HeadersInit = {
     "Content-Type": "application/json",
