@@ -1,7 +1,14 @@
 import { Logger, ValidationPipe } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { NestFactory } from "@nestjs/core";
+import { webcrypto } from "node:crypto";
 import { AppModule } from "./app.module";
+
+/** @nestjs/schedule expects `globalThis.crypto` (Node 20+ provides it). Polyfill for older/host runtimes. */
+if (!globalThis.crypto) {
+  (globalThis as typeof globalThis & { crypto: Crypto }).crypto =
+    webcrypto as unknown as Crypto;
+}
 
 async function bootstrap() {
   const logger = new Logger("Bootstrap");

@@ -2,10 +2,13 @@
   "name": "backend-api",
   "version": "0.0.1",
   "private": true,
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "prebuild": "prisma generate && node -e \"require('fs').rmSync('dist',{recursive:true,force:true}); ['tsconfig.tsbuildinfo','tsconfig.build.tsbuildinfo'].forEach(f=>{try{require('fs').unlinkSync(f)}catch(e){}})\"",
     "build": "nest build",
-    "start": "nest start",
+    "start": "node dist/main.js",
     "prestart:dev": "node -e \"['tsconfig.tsbuildinfo','tsconfig.build.tsbuildinfo'].forEach(f=>{try{require('fs').unlinkSync(f)}catch(e){}})\"",
     "start:dev": "prisma generate && nest start --watch",
     "start:prod": "node dist/main.js",
