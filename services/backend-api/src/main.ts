@@ -41,7 +41,7 @@ async function bootstrap() {
   );
 
   const port = config.get<string>("PORT") ?? process.env.PORT ?? "3001";
-  await app.listen(port);
+  await app.listen(port, '0.0.0.0');
   logger.log(
     `backend-api listening on port ${port} globalPrefix=/api NODE_ENV=${process.env.NODE_ENV ?? "undefined"}`,
   );
