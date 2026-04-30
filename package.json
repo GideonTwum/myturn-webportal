@@ -1,0 +1,23 @@
+{
+  "name": "myturn",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "services/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:web": "npm run dev -w web-portal",
+    "dev:api": "npm run start:dev -w backend-api",
+    "build": "npm run build -w @myturn/shared && npm run build -w backend-api && npm run build -w web-portal",
+    "db:generate": "npm run db:generate -w backend-api",
+    "db:migrate": "npm run prisma:migrate -w backend-api",
+    "db:migrate:deploy": "npm run prisma:migrate:deploy -w backend-api",
+    "db:push": "npm run db:push -w backend-api",
+    "db:seed": "npm run db:seed -w backend-api",
+    "test": "npm run test -w @myturn/shared"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

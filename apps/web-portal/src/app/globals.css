@@ -1,0 +1,24 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-page: #f9fafb;
+  --surface: #ffffff;
+  --border: #e5e7eb;
+  --text-primary: #111827;
+  --text-secondary: #6b7280;
+  --primary: #16a34a;
+  --primary-hover: #15803d;
+  --gold: #d4af37;
+  --gold-soft: #fef9e7;
+  --sidebar-active: #dcfce7;
+  --sidebar-active-border: #16a34a;
+  --ring-focus: rgba(22, 163, 74, 0.35);
+}
+
+@layer base {
+  body {
+    @apply min-h-screen bg-surface-muted text-gray-900 antialiased;
+  }
+}

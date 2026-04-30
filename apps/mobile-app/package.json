@@ -1,0 +1,9 @@
+{
+  "name": "mobile-app",
+  "private": true,
+  "version": "0.0.0-placeholder",
+  "description": "React Native + Expo app — placeholder until build step 14",
+  "scripts": {
+    "start": "echo \"Mobile app not implemented yet. See product spec.\" && exit 0"
+  }
+}

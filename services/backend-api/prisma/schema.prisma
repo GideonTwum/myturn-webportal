@@ -1,0 +1,331 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  SUPER_ADMIN
+  ADMIN
+  USER
+}
+
+enum AdminRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum PayoutMode {
+  DAILY
+  CYCLE
+}
+
+enum ContributionFrequency {
+  WEEKLY
+  BIWEEKLY
+  MONTHLY
+}
+
+enum GroupScheduleUnit {
+  DAY
+  WEEK
+  MONTH
+}
+
+enum GroupStatus {
+  DRAFT
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum GroupMemberStatus {
+  ACTIVE
+  LEFT
+}
+
+/** Cycle payout discipline (CYCLE groups only). */
+enum MemberCycleStanding {
+  ACTIVE
+  LATE
+  DEFAULTED
+}
+
+/** Security deposit held in the member's wallet (locked balance). */
+enum DepositStatus {
+  NOT_REQUIRED
+  HELD
+  FORFEITED
+  RELEASED
+}
+
+enum ContributionStatus {
+  PENDING
+  PAID
+  LATE
+  WAIVED
+}
+
+enum PaymentType {
+  CONTRIBUTION
+  PAYOUT
+  ADJUSTMENT
+  FEE
+  DEPOSIT
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+}
+
+enum PayoutStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum LedgerEntryType {
+  CREDIT
+  DEBIT
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  firstName    String?
+  lastName     String?
+  phone        String?
+  role         UserRole @default(USER)
+  isActive     Boolean  @default(true)
+  /** Set when the user is marked DEFAULTED on a CYCLE group (trust / ops flag). */
+  cycleDefaultFlagged Boolean @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  wallet            Wallet?
+  groupMemberships  GroupMember[]
+  groupsAdmin       Group[]           @relation("GroupAdmin")
+  contributions     Contribution[]
+  payoutsReceived   Payout[]          @relation("PayoutRecipient")
+  payments          Payment[]
+  adminRequests     AdminRequest[]    @relation("AdminRequestApplicant")
+  reviewedRequests  AdminRequest[]    @relation("AdminRequestReviewer")
+  adminEarnings     AdminEarning[]
+  notifications     Notification[]
+  auditLogs         AuditLog[]        @relation("AuditActor")
+}
+
+model AdminRequest {
+  id           String               @id @default(cuid())
+  applicantId  String
+  applicant    User                 @relation("AdminRequestApplicant", fields: [applicantId], references: [id])
+  status       AdminRequestStatus   @default(PENDING)
+  message      String?
+  reviewedById String?
+  reviewedBy   User?                @relation("AdminRequestReviewer", fields: [reviewedById], references: [id])
+  reviewedAt   DateTime?
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+}
+
+model Group {
+  id                 String                 @id @default(cuid())
+  name               String
+  description        String?
+  /** Invite-only join (e.g. MT-A3K7). Unique; inactive once group is no longer DRAFT for join purposes. */
+  inviteCode         String                 @unique
+  adminId            String
+  admin              User                   @relation("GroupAdmin", fields: [adminId], references: [id])
+  contributionAmount Decimal                @db.Decimal(18, 2)
+  /** Per-member payment count per cycle (CYCLE mode: daily × this = obligation; DAILY mode: stored as 1). */
+  daysPerCycle       Int                    @default(1)
+  payoutMode         PayoutMode             @default(CYCLE)
+  frequency          ContributionFrequency
+  memberSlots        Int
+  serviceMarginBps   Int                    @default(1000)
+  scheduleFrequencyValue Int               @default(1)
+  scheduleFrequencyUnit  GroupScheduleUnit @default(MONTH)
+  groupStartDate     DateTime?
+  groupEndDate       DateTime?
+  currentCycle       Int                    @default(1)
+  status             GroupStatus            @default(DRAFT)
+  /** Extra calendar days after the theoretical cycle end before auto-DEFAULTED (CYCLE mode). */
+  defaultGraceDays   Int                    @default(2)
+  /** When true, admins may finalize a payout despite DEFAULTED members (staging / ops). */
+  allowPayoutOverride Boolean               @default(false)
+  createdAt          DateTime               @default(now())
+  updatedAt          DateTime               @updatedAt
+
+  members       GroupMember[]
+  contributions Contribution[]
+  payouts       Payout[]
+  payments      Payment[]
+  adminEarnings AdminEarning[]
+}
+
+model GroupMember {
+  id         String            @id @default(cuid())
+  groupId    String
+  group      Group             @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User              @relation(fields: [userId], references: [id])
+  turnOrder  Int
+  status     GroupMemberStatus @default(ACTIVE)
+  /** CYCLE groups: payment discipline for the current period (see cycle compliance job). */
+  cycleStanding   MemberCycleStanding @default(ACTIVE)
+  /** CYCLE: contributionAmount × daysPerCycle held in wallet.lockedBalance while HELD. */
+  depositAmount   Decimal             @default(0) @db.Decimal(18, 2)
+  depositStatus   DepositStatus       @default(NOT_REQUIRED)
+  joinedAt   DateTime          @default(now())
+
+  @@unique([groupId, userId])
+  @@index([groupId])
+}
+
+model Contribution {
+  id          String             @id @default(cuid())
+  groupId     String
+  group       Group              @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User               @relation(fields: [userId], references: [id])
+  cycleNumber       Int
+  amount            Decimal            @db.Decimal(18, 2)
+  expectedDayCount  Int                @default(1)
+  paidDayCount      Int                @default(0)
+  dueDate           DateTime?
+  status            ContributionStatus @default(PENDING)
+  paidAt      DateTime?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  payments Payment[]
+
+  @@index([groupId, cycleNumber])
+  @@index([userId])
+}
+
+model Payment {
+  id              String        @id @default(cuid())
+  externalRef     String?       @unique
+  userId          String?
+  user            User?         @relation(fields: [userId], references: [id])
+  groupId         String?
+  group           Group?        @relation(fields: [groupId], references: [id])
+  contributionId  String?
+  contribution    Contribution? @relation(fields: [contributionId], references: [id])
+  amount          Decimal       @db.Decimal(18, 2)
+  type            PaymentType
+  status          PaymentStatus @default(PENDING)
+  metadata        Json?
+  completedAt     DateTime?
+  createdAt       DateTime      @default(now())
+
+  @@index([groupId])
+  @@index([userId])
+}
+
+model Payout {
+  id          String       @id @default(cuid())
+  groupId     String
+  group       Group        @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  recipientId String
+  recipient   User         @relation("PayoutRecipient", fields: [recipientId], references: [id])
+  cycleNumber Int
+  amount      Decimal      @db.Decimal(18, 2)
+  status      PayoutStatus @default(PENDING)
+  paidAt      DateTime?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@index([groupId, cycleNumber])
+}
+
+model Wallet {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id])
+  balance   Decimal  @default(0) @db.Decimal(18, 2)
+  /** Escrow for CYCLE group security deposits (not spendable until released). */
+  lockedBalance Decimal @default(0) @db.Decimal(18, 2)
+  currency  String   @default("USD")
+  updatedAt DateTime @updatedAt
+}
+
+model LedgerEntry {
+  id             String          @id @default(cuid())
+  type           LedgerEntryType
+  amount         Decimal         @db.Decimal(18, 2)
+  userId         String?
+  groupId        String?
+  referenceType  String
+  referenceId    String
+  description    String?
+  metadata       Json?
+  balanceAfter   Decimal?        @db.Decimal(18, 2)
+  createdAt      DateTime        @default(now())
+
+  @@index([userId])
+  @@index([groupId])
+  @@index([referenceType, referenceId])
+}
+
+model AdminEarning {
+  id                 String    @id @default(cuid())
+  adminId            String
+  admin              User      @relation(fields: [adminId], references: [id])
+  groupId            String?
+  group              Group?    @relation(fields: [groupId], references: [id])
+  cycleNumber        Int?
+  marginAmount       Decimal   @db.Decimal(18, 2)
+  adminShareAmount   Decimal   @db.Decimal(18, 2)
+  platformShareAmount Decimal  @db.Decimal(18, 2)
+  settledAt          DateTime?
+  createdAt          DateTime  @default(now())
+
+  @@index([adminId])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  title     String
+  body      String
+  type      String
+  read      Boolean  @default(false)
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  @@index([userId, read])
+}
+
+model Setting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     Json
+  updatedBy String?
+  updatedAt DateTime @updatedAt
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  actor      User?    @relation("AuditActor", fields: [actorId], references: [id])
+  action     String
+  entityType String
+  entityId   String?
+  metadata   Json?
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+
+  @@index([entityType, entityId])
+  @@index([actorId])
+}
