@@ -22,12 +22,22 @@ async function bootstrap() {
       .split(",")
       .map((o) => o.trim().replace(/\/+$/, ""))
       .filter(Boolean);
-    app.enableCors({ origin: origins, credentials: true });
+    app.enableCors({
+      origin: origins,
+      credentials: true,
+      methods: ["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
+      allowedHeaders: ["Content-Type", "Authorization"],
+    });
     logger.log(`CORS enabled for: ${origins.join(", ")}`);
   } else {
-    app.enableCors({ origin: true, credentials: true });
+    app.enableCors({
+      origin: true,
+      credentials: true,
+      methods: ["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
+      allowedHeaders: ["Content-Type", "Authorization"],
+    });
     logger.warn(
-      "CORS_ORIGIN not set — allowing any origin (fine for local dev; set CORS_ORIGIN in staging/production).",
+      "CORS_ORIGIN not set — allowing any origin (dev fallback only).",
     );
   }
 
