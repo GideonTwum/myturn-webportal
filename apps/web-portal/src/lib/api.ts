@@ -28,6 +28,18 @@ export function clearSession() {
   localStorage.removeItem("myturn_user");
 }
 
+/** Accept either snake_case or camelCase from the API or intermediaries. */
+export function resolveAccessToken(payload: {
+  access_token?: string;
+  accessToken?: string;
+}): string {
+  const t = payload.access_token ?? payload.accessToken;
+  if (typeof t !== "string" || !t.trim()) {
+    throw new Error("Malformed auth response: missing access token.");
+  }
+  return t.trim();
+}
+
 export async function apiFetch<T>(
   path: string,
   init: RequestInit = {},

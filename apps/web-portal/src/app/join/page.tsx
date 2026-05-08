@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, resolveAccessToken } from "@/lib/api";
 import type { AuthUser } from "@/lib/auth-context";
 import { useAuth } from "@/lib/auth-context";
 import { cn } from "@/lib/cn";
@@ -28,7 +28,8 @@ type InvitePreview = {
 
 type JoinResponse = {
   message: string;
-  access_token: string;
+  access_token?: string;
+  accessToken?: string;
   user: AuthUser;
 };
 
@@ -79,7 +80,7 @@ export default function JoinGroupPage() {
           phone,
         }),
       });
-      applyMemberSession(res.access_token, res.user);
+      applyMemberSession(resolveAccessToken(res), res.user);
       router.replace("/member");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Join failed");

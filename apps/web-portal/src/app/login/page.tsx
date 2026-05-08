@@ -14,7 +14,7 @@ const inputClass = cn(
 );
 
 export default function LoginPage() {
-  const { login, user, ready, logout } = useAuth();
+  const { login, user, ready } = useAuth();
   const router = useRouter();
   const [email, setEmail] = useState("hq@myturn.local");
   const [password, setPassword] = useState("ChangeMe123!");
@@ -48,16 +48,8 @@ export default function LoginPage() {
     setPending(true);
     try {
       await login(email, password);
-      const u = JSON.parse(localStorage.getItem("myturn_user") ?? "{}") as {
-        role: UserRole;
-      };
-      if (u.role === UserRole.SUPER_ADMIN) router.replace("/hq");
-      else if (u.role === UserRole.ADMIN) router.replace("/admin");
-      else if (u.role === UserRole.USER) router.replace("/member");
-      else {
-        setError("Unsupported account type.");
-        logout();
-      }
+      // Redirect is handled by the useEffect above once `user` is in context — do not navigate here:
+      // an immediate router.replace races React 18 batches and HQ/admin layouts redirect to login.
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
     } finally {

@@ -9,10 +9,12 @@ import {
   useState,
 } from "react";
 import { UserRole } from "@myturn/shared";
+import { flushSync } from "react-dom";
 import {
   apiFetch,
   clearSession,
   getStoredToken,
+  resolveAccessToken,
   setSession,
 } from "./api";
 
@@ -53,14 +55,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = useCallback(async (email: string, password: string) => {
     const res = await apiFetch<{
-      access_token: string;
+      access_token?: string;
+      accessToken?: string;
       user: AuthUser;
     }>("/auth/login", {
       method: "POST",
       body: JSON.stringify({ email, password }),
     });
-    setSession(res.access_token, JSON.stringify(res.user));
-    setUser(res.user);
+    const token = resolveAccessToken(res);
+    if (!res.user) {
+      throw new Error("Malformed login response: missing user.");
+    }
+    flushSync(() => {
+      setSession(token, JSON.stringify(res.user));
+      setUser(res.user);
+    });
   }, []);
 
   const logout = useCallback(() => {
@@ -70,8 +79,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const applyMemberSession = useCallback(
     (accessToken: string, nextUser: AuthUser) => {
-      setSession(accessToken, JSON.stringify(nextUser));
-      setUser(nextUser);
+      flushSync(() => {
+        setSession(accessToken, JSON.stringify(nextUser));
+        setUser(nextUser);
+      });
     },
     [],
   );

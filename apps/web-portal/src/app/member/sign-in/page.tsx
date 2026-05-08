@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, resolveAccessToken } from "@/lib/api";
 import type { AuthUser } from "@/lib/auth-context";
 import { useAuth } from "@/lib/auth-context";
 import { cn } from "@/lib/cn";
@@ -31,13 +31,14 @@ export default function MemberSignInPage() {
     setPending(true);
     try {
       const res = await apiFetch<{
-        access_token: string;
+        access_token?: string;
+        accessToken?: string;
         user: AuthUser;
       }>("/auth/member-phone", {
         method: "POST",
         body: JSON.stringify({ phone: trimmed }),
       });
-      applyMemberSession(res.access_token, res.user);
+      applyMemberSession(resolveAccessToken(res), res.user);
       router.replace("/member");
     } catch (err) {
       setError(
