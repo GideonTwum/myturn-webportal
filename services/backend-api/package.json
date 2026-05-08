@@ -14,16 +14,17 @@
     "start:prod": "node dist/main.js",
     "prisma:generate": "prisma generate",
     "db:generate": "prisma generate",
-    "prisma:migrate": "prisma migrate dev",
-    "prisma:migrate:deploy": "prisma migrate deploy",
-    "prisma:push": "prisma db push",
-    "db:push": "prisma db push",
-    "prisma:studio": "prisma studio",
-    "prisma:seed": "prisma db seed",
-    "db:seed": "prisma db seed"
+    "prisma:migrate": "node scripts/prisma-cli.cjs migrate dev",
+    "prisma:migrate:deploy": "node scripts/prisma-cli.cjs migrate deploy",
+    "prisma:push": "node scripts/prisma-cli.cjs db push",
+    "db:push": "node scripts/prisma-cli.cjs db push",
+    "prisma:studio": "node scripts/prisma-cli.cjs studio",
+    "prisma:seed": "node scripts/prisma-cli.cjs db seed",
+    "db:seed": "node scripts/prisma-cli.cjs db seed",
+    "seed:members": "ts-node --project prisma/tsconfig.json prisma/seed-members.ts"
   },
   "prisma": {
-    "seed": "ts-node --compiler-options {\"module\":\"CommonJS\"} prisma/seed.ts"
+    "seed": "ts-node --project prisma/tsconfig.json prisma/seed.ts"
   },
   "dependencies": {
     "@myturn/shared": "*",
@@ -36,6 +37,7 @@
     "@nestjs/schedule": "^6.1.3",
     "@prisma/client": "^6.1.0",
     "bcrypt": "^5.1.1",
+    "dotenv": "^16.6.1",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.1",
     "passport": "^0.7.0",

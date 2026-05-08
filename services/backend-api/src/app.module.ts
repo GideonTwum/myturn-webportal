@@ -1,6 +1,7 @@
-require('crypto');
+require("crypto");
 import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
+import { join } from "node:path";
 import { ScheduleModule } from "@nestjs/schedule";
 import { PrismaModule } from "./prisma/prisma.module";
 import { AuthModule } from "./auth/auth.module";
@@ -25,7 +26,11 @@ import { AppController } from "./app.controller";
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true }),
+    ConfigModule.forRoot({
+      isGlobal: true,
+      // Always load backend-api/.env regardless of npm/cwd from repo root.
+      envFilePath: join(__dirname, "..", ".env"),
+    }),
     ScheduleModule.forRoot(),
     PrismaModule,
     AuthModule,
