@@ -4,6 +4,13 @@ import {
   SERVICE_MARGIN_PERCENTAGE,
 } from "./constants";
 import { PayoutMode, type PayoutModeLiteral } from "./enums";
+import {
+  bpsToPercentage,
+  computeGrossPoolMinorFromParams,
+  getMarginBounds,
+  resolveDefaultServiceMarginBps,
+  validateServiceMarginBps,
+} from "./margin-tiers";
 
 /** Schedule unit for contribution interval (admin form). */
 export type FrequencyUnit = "day" | "week" | "month";
@@ -54,9 +61,14 @@ export type GroupFinancePreviewInput = {
   startDate: string;
   /**
    * Optional. When omitted, {@link getFixedGroupFinancePlatformSettings} is used
-   * so preview matches backend settlement exactly.
+   * for the 60/40 margin split only.
    */
   platformSettings?: GroupFinancePlatformSettings;
+  /**
+   * Admin-selected service margin (bps). When omitted, defaults to 10% if allowed
+   * for the pool tier, otherwise the tier maximum.
+   */
+  serviceMarginBps?: number;
 };
 
 export type PayoutScheduleRow = {
@@ -80,8 +92,13 @@ export type GroupFinancePreview = {
   endDate: string;
   /** Payout date after each cycle: `startDate + i × calendarDaysPerCycle`, i = 1..groupSize. */
   payoutSchedule: PayoutScheduleRow[];
-  /** Derived for storage (e.g. 10% → 1000 bps). */
+  /** Selected margin stored on the group (basis points). */
   serviceMarginBps: number;
+  /** Pool-tier bounds for the current gross pool per cycle. */
+  minAllowedMarginBps: number;
+  maxAllowedMarginBps: number;
+  /** 10% when allowed by tier, else {@link maxAllowedMarginBps}. */
+  recommendedMarginBps: number;
 };
 
 export type ComputeGroupFinancePreviewResult =
@@ -105,8 +122,6 @@ export function resolveGroupFinancePlatformSettings(
     );
   }
   if (
-    s.serviceMarginPercentage < 0 ||
-    s.serviceMarginPercentage > 100 ||
     s.adminSplitPercentage < 0 ||
     s.adminSplitPercentage > 100 ||
     s.myTurnSplitPercentage < 0 ||
@@ -183,6 +198,7 @@ export function computeGroupFinancePreview(
     startDate,
     platformSettings: platformSettingsInput,
     payoutMode: payoutModeRaw,
+    serviceMarginBps: serviceMarginBpsInput,
   } = input;
 
   const payoutMode: PayoutMode =
@@ -277,8 +293,29 @@ export function computeGroupFinancePreview(
   const totalCollectedPerCycle = roundCurrency2(
     contributionAmount * groupSize * grossDayMultiplier,
   );
+
+  const grossPoolAmountMinor = computeGrossPoolMinorFromParams(
+    contributionAmount,
+    groupSize,
+    payoutModeRaw,
+    payoutMode === PayoutMode.CYCLE ? cycleCalendarDays : undefined,
+  );
+  const marginBounds = getMarginBounds(grossPoolAmountMinor);
+
+  const selectedMarginBps =
+    serviceMarginBpsInput ?? resolveDefaultServiceMarginBps(grossPoolAmountMinor);
+  const marginValidation = validateServiceMarginBps(
+    selectedMarginBps,
+    grossPoolAmountMinor,
+  );
+  if (!marginValidation.ok) {
+    return { ok: false, reason: marginValidation.reason };
+  }
+  const serviceMarginBps = marginValidation.serviceMarginBps;
+  const marginPercent = bpsToPercentage(serviceMarginBps);
+
   const serviceMarginPerCycle = roundCurrency2(
-    (totalCollectedPerCycle * platform.serviceMarginPercentage) / 100,
+    (totalCollectedPerCycle * marginPercent) / 100,
   );
   const payoutAmountPerCycle = roundCurrency2(
     totalCollectedPerCycle - serviceMarginPerCycle,
@@ -298,8 +335,6 @@ export function computeGroupFinancePreview(
     myTurnEarningPerCycle * totalCycles,
   );
 
-  const serviceMarginBps = Math.round(platform.serviceMarginPercentage * 100);
-
   return {
     ok: true,
     preview: {
@@ -316,6 +351,9 @@ export function computeGroupFinancePreview(
       endDate,
       payoutSchedule,
       serviceMarginBps,
+      minAllowedMarginBps: marginBounds.minAllowedMarginBps,
+      maxAllowedMarginBps: marginBounds.maxAllowedMarginBps,
+      recommendedMarginBps: marginBounds.recommendedMarginBps,
     },
   };
 }

@@ -17,6 +17,7 @@
     "db:migrate:deploy": "npm run prisma:migrate:deploy -w backend-api",
     "db:push": "npm run db:push -w backend-api",
     "db:seed": "npm run db:seed -w backend-api",
+    "seed": "npm run db:seed -w backend-api",
     "test": "npm run test -w @myturn/shared"
   },
   "engines": {

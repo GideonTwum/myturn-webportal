@@ -8,10 +8,12 @@ import {
   formatGhs,
   MYTURN_SHARE_PERCENTAGE,
   PayoutMode,
-  SERVICE_MARGIN_PERCENTAGE,
+  RECOMMENDED_SERVICE_MARGIN_BPS,
 } from "@myturn/shared";
 import { apiFetch } from "@/lib/api";
 import { cn } from "@/lib/cn";
+import { GroupFinancePreviewCard } from "@/components/admin/GroupFinancePreviewCard";
+import { ServiceMarginSelector } from "@/components/admin/ServiceMarginSelector";
 
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
@@ -31,32 +33,55 @@ export default function CreateGroupPage() {
   const [payoutMode, setPayoutMode] = useState<PayoutMode>(PayoutMode.CYCLE);
   const [daysPerCycle, setDaysPerCycle] = useState("1");
   const [startDate, setStartDate] = useState(todayIso);
+  const [serviceMarginBps, setServiceMarginBps] = useState(
+    RECOMMENDED_SERVICE_MARGIN_BPS,
+  );
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
+  const contributionNum = Number(contributionAmount);
+  const groupSizeNum = Number(groupSize);
+  const daysPerCycleNum = Number(daysPerCycle);
+
   const previewResult = useMemo(() => {
-    const c = Number(contributionAmount);
-    const g = Number(groupSize);
-    const dpc = Number(daysPerCycle);
     if (payoutMode === PayoutMode.CYCLE) {
-      if (!Number.isFinite(dpc) || !Number.isInteger(dpc)) {
+      if (!Number.isFinite(daysPerCycleNum) || !Number.isInteger(daysPerCycleNum)) {
         return {
           ok: false as const,
           reason: "Enter a valid whole number of days per cycle",
         };
       }
     }
+    if (!Number.isFinite(contributionNum) || !Number.isFinite(groupSizeNum)) {
+      return { ok: false as const, reason: "Enter valid contribution and group size" };
+    }
     return computeGroupFinancePreview({
-      contributionAmount: c,
-      groupSize: g,
+      contributionAmount: contributionNum,
+      groupSize: groupSizeNum,
       payoutMode,
       daysPerCycle:
-        payoutMode === PayoutMode.CYCLE ? dpc : undefined,
+        payoutMode === PayoutMode.CYCLE ? daysPerCycleNum : undefined,
       startDate,
+      serviceMarginBps,
     });
-  }, [contributionAmount, groupSize, daysPerCycle, payoutMode, startDate]);
+  }, [
+    contributionAmount,
+    groupSize,
+    daysPerCycle,
+    payoutMode,
+    startDate,
+    serviceMarginBps,
+    contributionNum,
+    groupSizeNum,
+    daysPerCycleNum,
+  ]);
 
   const preview = previewResult.ok ? previewResult.preview : null;
+
+  const contributionLabel =
+    payoutMode === PayoutMode.DAILY
+      ? "Contribution (per member / cycle)"
+      : "Contribution (per day)";
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -72,14 +97,13 @@ export default function CreateGroupPage() {
         body: JSON.stringify({
           name,
           description: description || undefined,
-          contributionAmount: Number(contributionAmount),
-          groupSize: Number(groupSize),
+          contributionAmount: contributionNum,
+          groupSize: groupSizeNum,
           payoutMode,
           daysPerCycle:
-            payoutMode === PayoutMode.CYCLE
-              ? Number(daysPerCycle)
-              : undefined,
+            payoutMode === PayoutMode.CYCLE ? daysPerCycleNum : undefined,
           startDate,
+          serviceMarginBps: previewResult.preview.serviceMarginBps,
         }),
       });
       router.push("/admin/groups");
@@ -90,54 +114,14 @@ export default function CreateGroupPage() {
     }
   }
 
-  const groupSizeNum = Number(groupSize);
-
-  const schedulePreview =
-    preview && preview.payoutSchedule.length > 8
-      ? [
-          ...preview.payoutSchedule.slice(0, 4),
-          ...preview.payoutSchedule.slice(-2),
-        ]
-      : preview?.payoutSchedule ?? [];
-
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-8 lg:flex-row lg:items-start">
       <div className="min-w-0 flex-1">
         <p className="text-sm text-gray-600">
-          Amounts in GHS. Revenue rules are fixed for MVP and match settlement
-          exactly (not editable in the portal).
+          Amounts in GHS. Choose a service margin within the allowed range for
+          your pool size. Margin split is fixed at {ADMIN_SHARE_PERCENTAGE}% admin
+          / {MYTURN_SHARE_PERCENTAGE}% MyTurn HQ.
         </p>
-        <div className="mt-4 rounded-xl border border-amber-200/80 bg-brand-gold-soft/50 px-4 py-3 text-sm text-amber-950">
-          Service margin {SERVICE_MARGIN_PERCENTAGE}% of cycle gross; margin
-          split {ADMIN_SHARE_PERCENTAGE}% admin / {MYTURN_SHARE_PERCENTAGE}{" "}
-          MyTurn — defined in platform code.
-        </div>
-
-        <div className="mt-4 rounded-2xl border border-gray-200 bg-white px-4 py-4 shadow-card">
-          <p className="text-xs font-bold uppercase tracking-wide text-gray-500">
-            Revenue rules (read-only, MVP)
-          </p>
-          <ul className="mt-3 grid gap-2 text-sm text-gray-800 sm:grid-cols-3">
-            <li>
-              Service margin:{" "}
-              <span className="font-semibold">
-                {SERVICE_MARGIN_PERCENTAGE}%
-              </span>
-            </li>
-            <li>
-              Admin split:{" "}
-              <span className="font-semibold text-brand-gold-dark">
-                {ADMIN_SHARE_PERCENTAGE}%
-              </span>
-            </li>
-            <li>
-              MyTurn split:{" "}
-              <span className="font-semibold text-blue-700">
-                {MYTURN_SHARE_PERCENTAGE}%
-              </span>
-            </li>
-          </ul>
-        </div>
 
         <form
           onSubmit={onSubmit}
@@ -170,9 +154,7 @@ export default function CreateGroupPage() {
             </label>
             <select
               value={payoutMode}
-              onChange={(e) =>
-                setPayoutMode(e.target.value as PayoutMode)
-              }
+              onChange={(e) => setPayoutMode(e.target.value as PayoutMode)}
               className={inputClass}
             >
               <option value={PayoutMode.DAILY}>
@@ -249,12 +231,30 @@ export default function CreateGroupPage() {
             />
           </div>
 
-          {Number.isFinite(groupSizeNum) && groupSizeNum > 100 && (
-            <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-              Large groups may take longer to complete and require stronger trust
-              management.
-            </p>
-          )}
+          {Number.isFinite(groupSizeNum) &&
+            groupSizeNum > 100 &&
+            Number.isFinite(contributionNum) && (
+              <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                Large groups may take longer to complete and require stronger
+                trust management.
+              </p>
+            )}
+
+          {Number.isFinite(contributionNum) &&
+            Number.isFinite(groupSizeNum) &&
+            groupSizeNum >= 5 && (
+              <ServiceMarginSelector
+                contributionAmount={contributionNum}
+                groupSize={groupSizeNum}
+                payoutMode={payoutMode}
+                daysPerCycle={
+                  payoutMode === PayoutMode.CYCLE ? daysPerCycleNum : undefined
+                }
+                startDate={startDate}
+                serviceMarginBps={serviceMarginBps}
+                onMarginBpsChange={setServiceMarginBps}
+              />
+            )}
 
           {!previewResult.ok && (
             <p className="text-sm font-medium text-amber-800">
@@ -281,125 +281,16 @@ export default function CreateGroupPage() {
             Live preview
           </h2>
           <p className="mt-1 text-xs text-gray-600">
-            Same formulas as payout settlement (fixed MVP rules in code).
+            Updates as you change contribution, size, payout model, or margin.
           </p>
 
           {preview ? (
-            <>
-              <dl className="mt-4 space-y-3 text-sm">
-                <div className="flex justify-between gap-2 border-b border-gray-100 pb-2">
-                  <dt className="text-gray-500">Payout model</dt>
-                  <dd className="font-medium text-gray-900">
-                    {preview.payoutMode === PayoutMode.DAILY
-                      ? "Daily (one pay / member)"
-                      : "Multi-day cycle"}
-                  </dd>
-                </div>
-                <div className="flex justify-between gap-2 border-b border-gray-100 pb-2">
-                  <dt className="text-gray-500">
-                    {preview.payoutMode === PayoutMode.DAILY
-                      ? "Contribution / member / cycle"
-                      : "Contribution / day"}
-                  </dt>
-                  <dd className="font-medium text-gray-900">
-                    {formatGhs(Number(contributionAmount))}
-                  </dd>
-                </div>
-                <div className="flex justify-between gap-2 border-b border-gray-100 pb-2">
-                  <dt className="text-gray-500">Calendar days / cycle</dt>
-                  <dd className="text-gray-900">{preview.daysPerCycle}</dd>
-                </div>
-                <div className="flex justify-between gap-2 border-b border-gray-100 pb-2">
-                  <dt className="text-gray-500">Group size</dt>
-                  <dd className="text-gray-900">{groupSize}</dd>
-                </div>
-                <div className="flex justify-between gap-2 border-b border-gray-100 pb-2">
-                  <dt className="text-gray-500">Total collected / cycle</dt>
-                  <dd className="font-semibold text-gray-900">
-                    {formatGhs(preview.totalCollectedPerCycle)}
-                  </dd>
-                </div>
-                <div className="flex justify-between gap-2 border-b border-gray-100 pb-2">
-                  <dt className="text-gray-500">Service margin / cycle</dt>
-                  <dd className="text-gray-700">
-                    {formatGhs(preview.serviceMarginPerCycle)}
-                  </dd>
-                </div>
-                <div className="flex justify-between gap-2 border-b border-gray-100 pb-2">
-                  <dt className="text-gray-500">Payout / cycle</dt>
-                  <dd className="font-bold text-brand-green">
-                    {formatGhs(preview.payoutAmountPerCycle)}
-                  </dd>
-                </div>
-                <div className="flex justify-between gap-2 border-b border-gray-100 pb-2">
-                  <dt className="text-gray-500">Admin earnings / cycle</dt>
-                  <dd className="font-semibold text-brand-gold-dark">
-                    {formatGhs(preview.adminEarningPerCycle)}
-                  </dd>
-                </div>
-                <div className="flex justify-between gap-2 border-b border-gray-100 pb-2">
-                  <dt className="text-gray-500">MyTurn earnings / cycle</dt>
-                  <dd className="font-semibold text-blue-700">
-                    {formatGhs(preview.myTurnEarningPerCycle)}
-                  </dd>
-                </div>
-                <div className="flex justify-between gap-2 border-b border-gray-100 pb-2">
-                  <dt className="text-gray-500">Total admin earnings</dt>
-                  <dd className="font-semibold text-brand-gold-dark">
-                    {formatGhs(preview.totalAdminEarnings)}
-                  </dd>
-                </div>
-                <div className="flex justify-between gap-2 border-b border-gray-100 pb-2">
-                  <dt className="text-gray-500">Total MyTurn earnings</dt>
-                  <dd className="font-semibold text-blue-700">
-                    {formatGhs(preview.totalMyTurnEarnings)}
-                  </dd>
-                </div>
-                <div className="flex justify-between gap-2 border-b border-gray-100 pb-2">
-                  <dt className="text-gray-500">Total cycles</dt>
-                  <dd className="text-gray-900">{preview.totalCycles}</dd>
-                </div>
-                <div className="flex justify-between gap-2 border-b border-gray-100 pb-2">
-                  <dt className="text-gray-500">Start date</dt>
-                  <dd className="text-right text-gray-900">{startDate}</dd>
-                </div>
-                <div className="flex justify-between gap-2 pb-2">
-                  <dt className="text-gray-500">Estimated end date</dt>
-                  <dd className="text-right text-gray-900">{preview.endDate}</dd>
-                </div>
-              </dl>
-              <div className="mt-4 border-t border-gray-100 pt-3">
-                <p className="text-xs font-semibold text-gray-500">
-                  Payout schedule (by cycle)
-                </p>
-                <ul className="mt-2 max-h-48 space-y-1 overflow-y-auto text-xs text-gray-600">
-                  {preview.payoutSchedule.length > 8 ? (
-                    <>
-                      {schedulePreview.slice(0, 4).map((row) => (
-                        <li key={row.cycle} className="flex justify-between">
-                          <span>Cycle {row.cycle}</span>
-                          <span className="text-gray-800">{row.payoutDate}</span>
-                        </li>
-                      ))}
-                      <li className="py-1 text-center text-gray-400">…</li>
-                      {schedulePreview.slice(-2).map((row) => (
-                        <li key={row.cycle} className="flex justify-between">
-                          <span>Cycle {row.cycle}</span>
-                          <span className="text-gray-800">{row.payoutDate}</span>
-                        </li>
-                      ))}
-                    </>
-                  ) : (
-                    preview.payoutSchedule.map((row) => (
-                      <li key={row.cycle} className="flex justify-between">
-                        <span>Cycle {row.cycle}</span>
-                        <span className="text-gray-800">{row.payoutDate}</span>
-                      </li>
-                    ))
-                  )}
-                </ul>
-              </div>
-            </>
+            <GroupFinancePreviewCard
+              preview={preview}
+              contributionDisplay={formatGhs(contributionNum)}
+              groupSize={groupSize}
+              startDate={startDate}
+            />
           ) : (
             <p className="mt-4 text-sm text-gray-500">
               Adjust the form to see the financial breakdown.

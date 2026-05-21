@@ -67,7 +67,8 @@ export default function HqSettingsPage() {
               Revenue rules (read-only)
             </h2>
             <p className="mt-0.5 text-xs text-amber-900/80">
-              Service margin {SERVICE_MARGIN_PERCENTAGE}% of gross collected per
+              Service margin is set per group (2%–20% max by pool size; default{" "}
+              {SERVICE_MARGIN_PERCENTAGE}% when allowed). Split of margin:
               cycle. Margin split: {ADMIN_SHARE_PERCENTAGE}% admin /{" "}
               {MYTURN_SHARE_PERCENTAGE}% MyTurn. Same values power group
               preview, payouts, ledger, and HQ reporting. To change a release,

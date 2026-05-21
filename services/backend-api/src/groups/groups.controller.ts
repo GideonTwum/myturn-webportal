@@ -59,6 +59,13 @@ class CreateGroupDto {
   @IsString()
   @Matches(/^\d{4}-\d{2}-\d{2}$/)
   startDate!: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(200)
+  @Max(2000)
+  serviceMarginBps?: number;
 }
 
 class UpdateGroupDraftDto {
@@ -98,6 +105,13 @@ class UpdateGroupDraftDto {
   @IsString()
   @Matches(/^\d{4}-\d{2}-\d{2}$/)
   startDate?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(200)
+  @Max(2000)
+  serviceMarginBps?: number;
 }
 
 class UpdateCycleRiskDto {

@@ -22,7 +22,43 @@ function loadPrismaEnv(packageRoot = __dirname) {
   for (const [key, value] of Object.entries(parsed)) {
     process.env[key] = value;
   }
+  assertLaptopReachableDatabaseUrl();
   return { railwayPublicLoaded: true };
+}
+
+/**
+ * `.env.railway-public` is for Prisma from your laptop. Railway's private host
+ * `postgres.railway.internal` only resolves inside Railway — not on your PC.
+ */
+function assertLaptopReachableDatabaseUrl() {
+  const raw = process.env.DATABASE_URL;
+  if (!raw || typeof raw !== "string") return;
+  try {
+    const normalized = raw.trim().replace(/^postgres(ql)?:/i, "http:");
+    const host = new URL(normalized).hostname;
+    if (host === "postgres.railway.internal" || host.endsWith(".railway.internal")) {
+      console.error(
+        "[prisma-cli] DATABASE_URL uses a Railway *private* host (" +
+          host +
+          ").",
+      );
+      console.error(
+        "[prisma-cli] From your laptop, use the *public* URL instead:",
+      );
+      console.error(
+        "[prisma-cli]   Railway → Postgres service → Connect → Public Network → copy URL",
+      );
+      console.error(
+        "[prisma-cli] Put that in services/backend-api/.env.railway-public (host is usually *.proxy.rlwy.net, port often not 5432).",
+      );
+      console.error(
+        "[prisma-cli] Keep postgres.railway.internal only on the deployed API service variables.",
+      );
+      process.exit(1);
+    }
+  } catch {
+    /* parse errors surface later from Prisma */
+  }
 }
 
 /**

@@ -91,7 +91,7 @@ npm run dev:web
 
 - **Fresh database:** run `npx prisma migrate deploy` (or `npm run db:migrate` in dev) from `services/backend-api`. The initial migration `20260429100000_init_schema` creates the full schema (including `inviteCode` on `Group`).
 - **Existing databases** that were created with an older migration history may need a one-time baseline: mark migrations applied or align schema manually, then use `migrate resolve` — see [Prisma baselining](https://www.prisma.io/docs/guides/migrate/developing-and-seeding-in-development#baselining-a-database).
-- **Seed:** `npm run db:seed` — creates HQ, admin, and demo member users (passwords in `prisma/seed.ts`). **Change or disable default passwords before production.**
+- **Seed:** `npm run seed` (or `npm run db:seed`) — creates HQ, admin, and five demo members (`prisma/seed.ts`). Skips existing emails (idempotent). To seed **Railway Postgres from your laptop**, put the public `DATABASE_URL` in `services/backend-api/.env.railway-public` (see `.env.railway-public.example`); the CLI merges it over `.env` and logs the target host. Default password for **new** users: `ChangeMe123!` — change before real production use.
 
 ## Staging / production build
 

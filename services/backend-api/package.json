@@ -21,6 +21,7 @@
     "prisma:studio": "node scripts/prisma-cli.cjs studio",
     "prisma:seed": "node scripts/prisma-cli.cjs db seed",
     "db:seed": "node scripts/prisma-cli.cjs db seed",
+    "seed": "node scripts/prisma-cli.cjs db seed",
     "seed:members": "ts-node --project prisma/tsconfig.json prisma/seed-members.ts"
   },
   "prisma": {

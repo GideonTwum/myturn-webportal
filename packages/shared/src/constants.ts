@@ -1,9 +1,9 @@
 /**
- * Fixed MVP revenue rules — single source of truth in code.
+ * Revenue rules — margin split fixed in code; service margin % is pool-tiered per group.
  * Not editable via MyTurn HQ (staging-safe). MoMo integration is out of scope for MVP.
  */
 
-/** Service margin as % of gross collected per cycle (e.g. 10 = 10%). */
+/** Recommended default service margin when the pool tier allows (e.g. 10 = 10%). */
 export const SERVICE_MARGIN_PERCENTAGE = 10;
 
 /** Admin’s share of the service margin (% of margin, not of gross). */

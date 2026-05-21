@@ -46,6 +46,8 @@ export type CreateGroupInput = {
   daysPerCycle?: number;
   groupSize: number;
   startDate: string;
+  /** Service margin in bps; validated against pool-size tier on the server. */
+  serviceMarginBps?: number;
 };
 
 export type UpdateGroupDraftInput = {
@@ -56,6 +58,7 @@ export type UpdateGroupDraftInput = {
   daysPerCycle?: number;
   groupSize?: number;
   startDate?: string;
+  serviceMarginBps?: number;
 };
 
 function splitFullName(fullName: string): { firstName: string; lastName: string } {
@@ -121,6 +124,7 @@ export class GroupsService {
         input.payoutMode === PayoutMode.CYCLE ? storedDays : undefined,
       startDate: input.startDate,
       platformSettings: platform,
+      serviceMarginBps: input.serviceMarginBps,
     });
     if (!previewResult.ok) {
       throw new BadRequestException(previewResult.reason);
@@ -785,6 +789,8 @@ export class GroupsService {
         payoutMode === PayoutMode.CYCLE ? storedDays : undefined,
       startDate: startDateIso,
       platformSettings: platform,
+      serviceMarginBps:
+        input.serviceMarginBps ?? group.serviceMarginBps,
     });
     if (!previewResult.ok) {
       throw new BadRequestException(previewResult.reason);

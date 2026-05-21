@@ -3,7 +3,13 @@
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { FormEvent, useMemo, useState } from "react";
-import { computeGroupFinancePreview, PayoutMode } from "@myturn/shared";
+import {
+  bpsToPercentage,
+  computeGroupFinancePreview,
+  formatGhs,
+  PayoutMode,
+} from "@myturn/shared";
+import { ServiceMarginSelector } from "@/components/admin/ServiceMarginSelector";
 import { Copy, Pencil } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { LIVE_POLL_MS, useSWR, useSWRConfig } from "@/lib/swr";
@@ -37,6 +43,7 @@ type GroupDetail = {
   daysPerCycle: number;
   payoutMode: PayoutMode;
   memberSlots: number;
+  serviceMarginBps: number;
   groupStartDate: string | null;
   members: GroupMemberRow[];
 };
@@ -63,6 +70,7 @@ export default function AdminGroupDetailPage() {
   const [daysPerCycle, setDaysPerCycle] = useState("");
   const [groupSize, setGroupSize] = useState("");
   const [startDate, setStartDate] = useState("");
+  const [serviceMarginBps, setServiceMarginBps] = useState(1000);
 
   const activeMembers = useMemo(
     () => group?.members.filter((m) => m.status === "ACTIVE") ?? [],
@@ -81,6 +89,7 @@ export default function AdminGroupDetailPage() {
       ? new Date(group.groupStartDate).toISOString().slice(0, 10)
       : "";
     setStartDate(gd);
+    setServiceMarginBps(group.serviceMarginBps);
     setEditOpen(true);
     setErr(null);
   }
@@ -104,6 +113,7 @@ export default function AdminGroupDetailPage() {
               : undefined,
           groupSize: Number(groupSize),
           startDate,
+          serviceMarginBps,
         }),
       });
       setEditOpen(false);
@@ -168,6 +178,7 @@ export default function AdminGroupDetailPage() {
       payoutMode,
       daysPerCycle: payoutMode === PayoutMode.CYCLE ? dpc : undefined,
       startDate,
+      serviceMarginBps,
     });
   }, [
     editOpen,
@@ -176,6 +187,7 @@ export default function AdminGroupDetailPage() {
     groupSize,
     payoutMode,
     startDate,
+    serviceMarginBps,
   ]);
 
   if (error) {
@@ -275,6 +287,10 @@ export default function AdminGroupDetailPage() {
         <p className="mt-4 text-sm text-gray-700">
           <span className="font-semibold">Members:</span>{" "}
           {activeMembers.length} / {group.memberSlots}
+        </p>
+        <p className="mt-2 text-sm text-gray-700">
+          <span className="font-semibold">Service margin:</span>{" "}
+          {bpsToPercentage(group.serviceMarginBps)}%
         </p>
       </div>
 
@@ -452,6 +468,30 @@ export default function AdminGroupDetailPage() {
                   className={inputClass}
                 />
               </div>
+              {Number.isFinite(Number(contributionAmount)) &&
+                Number.isFinite(Number(groupSize)) && (
+                  <ServiceMarginSelector
+                    contributionAmount={Number(contributionAmount)}
+                    groupSize={Number(groupSize)}
+                    payoutMode={payoutMode}
+                    daysPerCycle={
+                      payoutMode === PayoutMode.CYCLE
+                        ? Number(daysPerCycle)
+                        : undefined
+                    }
+                    startDate={startDate}
+                    serviceMarginBps={serviceMarginBps}
+                    onMarginBpsChange={setServiceMarginBps}
+                  />
+                )}
+              {previewResult.ok && "preview" in previewResult && (
+                <p className="text-xs text-gray-600">
+                  Net payout / cycle:{" "}
+                  <span className="font-semibold text-brand-green">
+                    {formatGhs(previewResult.preview.payoutAmountPerCycle)}
+                  </span>
+                </p>
+              )}
               {!previewResult.ok && (
                 <p className="text-sm text-amber-800">{previewResult.reason}</p>
               )}
