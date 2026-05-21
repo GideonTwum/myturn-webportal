@@ -4,9 +4,24 @@
  * - Production: set NEXT_PUBLIC_API_URL in the host (e.g. Vercel) so the client bundle points at your API.
  * Resolving is lazy so `next build` does not throw when the env var is only set at deploy/runtime.
  */
+/**
+ * Normalize production/staging NEXT_PUBLIC_API_URL.
+ * Missing `http://` or `https://` makes browsers resolve the URL as a path on the
+ * current site (e.g. vercel.app/backend-api-xxxx... → 404 on the SPA).
+ */
+function normalizeConfiguredApiBase(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) return "";
+  const noTrailingSlash = trimmed.replace(/\/+$/, "");
+  if (/^https?:\/\//i.test(noTrailingSlash)) {
+    return noTrailingSlash;
+  }
+  return `https://${noTrailingSlash.replace(/^\/+/, "")}`;
+}
+
 function getApiBase(): string {
   const raw = process.env.NEXT_PUBLIC_API_URL?.trim();
-  if (raw) return raw.replace(/\/$/, "");
+  if (raw) return normalizeConfiguredApiBase(raw);
   if (process.env.NODE_ENV === "development") {
     return "http://localhost:3001/api";
   }

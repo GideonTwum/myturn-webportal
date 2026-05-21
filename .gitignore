@@ -4,6 +4,7 @@ dist
 .turbo
 .env
 .env.local
+.env.railway-public
 *.log
 .DS_Store
 coverage
