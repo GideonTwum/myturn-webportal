@@ -13,6 +13,13 @@ const dotenv = require("dotenv");
 function loadPrismaEnv(packageRoot = __dirname) {
   dotenv.config({ path: path.resolve(packageRoot, ".env"), override: true });
 
+  const forceLocal =
+    process.env.MYTURN_LOCAL_DB === "1" ||
+    process.env.MYTURN_LOCAL_DB === "true";
+  if (forceLocal) {
+    return { railwayPublicLoaded: false, forcedLocal: true };
+  }
+
   const railwayPath = path.resolve(packageRoot, ".env.railway-public");
   if (!fs.existsSync(railwayPath)) {
     return { railwayPublicLoaded: false };

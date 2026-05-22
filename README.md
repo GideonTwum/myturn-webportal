@@ -30,6 +30,18 @@ Web portal (admin + HQ), Expo member mobile foundation, and NestJS API with Pris
 
 Copy `services/backend-api/.env.example` → `.env`, `apps/web-portal/.env.example` → `.env.local` for local development. For **Railway Postgres migrations from your laptop**, see [Railway Postgres](#railway-postgres) and `services/backend-api/.env.railway-public.example` (do not commit credentials).
 
+### Connected staging (all clients)
+
+Use the **same** API URL everywhere. Templates: `.env.local.example` (local) and `.env.staging.example` (Railway/Vercel).
+
+```bash
+npm run db:seed:local     # use :local when API uses Docker Postgres (see .env.railway-public note)
+npm run seed:staging:local
+npm run test:e2e-staging  # API smoke (backend must be running)
+```
+
+Full ops guide: **[docs/STAGING_RUNBOOK.md](docs/STAGING_RUNBOOK.md)** · Staging hardening: **[docs/STAGING_HARDENING_SUMMARY.md](docs/STAGING_HARDENING_SUMMARY.md)** · Infrastructure: **[docs/INFRASTRUCTURE_PHASE_SUMMARY.md](docs/INFRASTRUCTURE_PHASE_SUMMARY.md)** · CI: **[docs/CI_RUNBOOK.md](docs/CI_RUNBOOK.md)**
+
 ## Railway Postgres
 
 Railway gives **two** connection URLs for the same database:

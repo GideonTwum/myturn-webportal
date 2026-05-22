@@ -22,6 +22,7 @@ import {
 } from "@prisma/client";
 import { Decimal } from "@prisma/client/runtime/library";
 import { randomBytes, randomInt } from "crypto";
+import { getPublicApiBaseUrl } from "../common/platform-env";
 import {
   computeGroupFinancePreview,
   getFixedGroupFinancePlatformSettings,
@@ -425,6 +426,19 @@ export class GroupsService {
     return raw.trim().toUpperCase().replace(/\s+/g, "");
   }
 
+  private throwInviteNotFound(raw: string, normalized: string): never {
+    const apiBase = getPublicApiBaseUrl();
+    throw new NotFoundException({
+      message: "Invalid invite code",
+      code: "INVITE_NOT_FOUND",
+      inviteCode: normalized,
+      hint:
+        "This code was not found in the database connected to this API. Ensure mobile, web, and admin all use the same API URL and database (run `npm run seed:staging` for demo codes like STAGING-DEMO).",
+      apiBaseUrl: apiBase,
+      received: raw.trim(),
+    });
+  }
+
   /** DRAFT groups accept new members; ACTIVE only when roster still empty (admin activated early). */
   private groupAcceptsNewMembers(
     status: GroupStatus,
@@ -466,7 +480,7 @@ export class GroupsService {
       },
     });
     if (!group) {
-      throw new NotFoundException("Invalid invite code");
+      this.throwInviteNotFound(rawInviteCode, inviteCode);
     }
     const currentMembers = group.members.length;
     if (
@@ -532,7 +546,7 @@ export class GroupsService {
       },
     });
     if (!group) {
-      throw new NotFoundException("Invalid invite code");
+      this.throwInviteNotFound(input.inviteCode, inviteCode);
     }
     if (
       !this.groupAcceptsNewMembers(

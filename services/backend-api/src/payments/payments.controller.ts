@@ -11,6 +11,7 @@ import { AuthGuard } from "@nestjs/passport";
 import { UserRole } from "@prisma/client";
 import { Roles } from "../common/decorators/roles.decorator";
 import { RequireVerifiedMember } from "../common/decorators/require-verified-member.decorator";
+import { MockFeaturesGuard } from "../common/guards/mock-features.guard";
 import { RolesGuard } from "../common/guards/roles.guard";
 import { VerifiedMemberGuard } from "../common/guards/verified-member.guard";
 import { PaymentsService } from "./payments.service";
@@ -32,6 +33,7 @@ export class PaymentsController {
    * Mock / manual contribution payment for staging.
    * Mobile Money (MoMo) integration is not wired yet.
    */
+  @UseGuards(MockFeaturesGuard)
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.USER)
   @RequireVerifiedMember()
   @Post("mock/contribution-payment")

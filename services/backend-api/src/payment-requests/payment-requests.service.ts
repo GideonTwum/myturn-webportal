@@ -6,16 +6,22 @@ import {
 import { PaymentRequestStatus, UserRole } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { MemberParticipationService } from "../member/member-participation.service";
+import { IdempotencyService } from "../common/idempotency/idempotency.service";
+import { createPaymentProvider } from "../payments/providers/placeholder-providers";
+import { PaymentIntentStatus } from "../payments/payment-intent.types";
 import { PaymentsService } from "../payments/payments.service";
 
 const REQUEST_TTL_MS = 15 * 60 * 1000;
 
 @Injectable()
 export class PaymentRequestsService {
+  private readonly paymentProvider = createPaymentProvider();
+
   constructor(
     private prisma: PrismaService,
     private participation: MemberParticipationService,
     private payments: PaymentsService,
+    private idempotency: IdempotencyService,
   ) {}
 
   async initiateContributionPayment(userId: string, contributionId: string) {
@@ -51,8 +57,21 @@ export class PaymentRequestsService {
         contributionId,
         amount,
         expiresAt,
-        metadata: { channel: "momo", staging: true },
+        metadata: {
+          channel: "momo",
+          staging: true,
+          intentStatus: PaymentIntentStatus.PENDING,
+          provider: this.paymentProvider.name,
+        },
       },
+    });
+
+    await this.paymentProvider.requestToPay({
+      paymentRequestId: req.id,
+      amount: amount.toString(),
+      currency: "GHS",
+      phoneDigits: "",
+      externalRef: req.externalRef,
     });
 
     return {
@@ -83,6 +102,18 @@ export class PaymentRequestsService {
 
   /** Staging: simulates MoMo approval → records contribution payment. */
   async mockApprove(userId: string, requestId: string) {
+    const result = await this.idempotency.runOnce(
+      `mock-approve:${requestId}:${userId}`,
+      86400,
+      () => this.executeMockApprove(userId, requestId),
+    );
+    if (result.duplicate) {
+      return result.value;
+    }
+    return result.value;
+  }
+
+  private async executeMockApprove(userId: string, requestId: string) {
     const req = await this.prisma.paymentRequest.findFirst({
       where: { id: requestId, userId },
     });
@@ -104,12 +135,18 @@ export class PaymentRequestsService {
       UserRole.USER,
     );
 
+    const providerRef = `mock-momo-${Date.now()}`;
     const updated = await this.prisma.paymentRequest.update({
       where: { id: req.id },
       data: {
         status: PaymentRequestStatus.APPROVED,
         approvedAt: new Date(),
-        providerRef: `mock-momo-${Date.now()}`,
+        providerRef,
+        metadata: {
+          ...(typeof req.metadata === "object" && req.metadata ? req.metadata : {}),
+          intentStatus: PaymentIntentStatus.APPROVED,
+          reconciliationStatus: "PENDING",
+        },
       },
     });
 

@@ -19,6 +19,7 @@ import { setPendingInviteCode } from "@/lib/invite-storage";
 import { useInvitePreview } from "@/hooks/useMemberQueries";
 import { API_BASE_URL } from "@/constants/config";
 import { useDemoOptional } from "@/providers/DemoProvider";
+import { useAuth } from "@/providers/AuthProvider";
 import { mockInviteGroup, type PayoutSlot } from "@/mock-data";
 import { tokens } from "@/constants/tokens";
 import { fonts } from "@/constants/typography";
@@ -27,6 +28,7 @@ export default function InviteLandingScreen() {
   const { code } = useLocalSearchParams<{ code?: string | string[] }>();
   const router = useRouter();
   const demo = useDemoOptional();
+  const { token } = useAuth();
   const inviteCode = normalizeInviteCode(
     paramString(code) || demo?.group.inviteCode || "DEMO2024",
   );
@@ -63,6 +65,12 @@ export default function InviteLandingScreen() {
     await setPendingInviteCode(inviteCode);
     if (IS_MOCK_UI && demo) {
       demo.setPendingInviteCode(inviteCode);
+      router.push("/(onboarding)/phone");
+      return;
+    }
+    if (token) {
+      router.push("/(onboarding)/join");
+      return;
     }
     router.push("/(onboarding)/phone");
   }
@@ -77,7 +85,10 @@ export default function InviteLandingScreen() {
       }
       footer={
         <View style={styles.footer}>
-          <GradientButton label="Continue to Join" onPress={continueJoin} />
+          <GradientButton
+            label={token ? "Continue to join" : "Continue to Join"}
+            onPress={continueJoin}
+          />
         </View>
       }
     >

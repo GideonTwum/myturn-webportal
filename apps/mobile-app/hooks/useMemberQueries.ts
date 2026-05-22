@@ -26,12 +26,19 @@ export function useInvalidateMemberData() {
   }, [qc]);
 }
 
+const queryDefaults = {
+  staleTime: POLL_NORMAL_MS / 2,
+  refetchOnWindowFocus: true,
+  refetchOnReconnect: true,
+} as const;
+
 export function useMemberMe(enabled = true) {
   return useQuery({
     queryKey: memberKeys.me,
     queryFn: () => api.auth.memberMe(),
     enabled: enabled && !IS_MOCK_UI,
     refetchInterval: POLL_NORMAL_MS,
+    ...queryDefaults,
   });
 }
 
@@ -41,6 +48,7 @@ export function useMemberGroups(enabled = true) {
     queryFn: () => api.groups.list(),
     enabled: enabled && !IS_MOCK_UI,
     refetchInterval: POLL_NORMAL_MS,
+    ...queryDefaults,
   });
 }
 
@@ -50,6 +58,7 @@ export function useMemberGroup(groupId: string, enabled = true) {
     queryFn: () => api.groups.get(groupId),
     enabled: enabled && !IS_MOCK_UI && Boolean(groupId),
     refetchInterval: POLL_NORMAL_MS,
+    ...queryDefaults,
   });
 }
 
@@ -59,6 +68,7 @@ export function useMemberPayouts(enabled = true) {
     queryFn: () => api.payouts.list(),
     enabled: enabled && !IS_MOCK_UI,
     refetchInterval: POLL_NORMAL_MS,
+    ...queryDefaults,
   });
 }
 
@@ -68,6 +78,7 @@ export function useMemberPayments(enabled = true) {
     queryFn: () => api.payments.list(),
     enabled: enabled && !IS_MOCK_UI,
     refetchInterval: POLL_NORMAL_MS,
+    ...queryDefaults,
   });
 }
 
@@ -77,6 +88,7 @@ export function useMemberNotifications(enabled = true) {
     queryFn: () => api.notifications.list(),
     enabled: enabled && !IS_MOCK_UI,
     refetchInterval: POLL_NORMAL_MS,
+    ...queryDefaults,
   });
 }
 
@@ -86,6 +98,7 @@ export function useTrustProfile(enabled = true) {
     queryFn: () => api.verification.trustStatus(),
     enabled: enabled && !IS_MOCK_UI,
     refetchInterval: POLL_NORMAL_MS,
+    ...queryDefaults,
   });
 }
 

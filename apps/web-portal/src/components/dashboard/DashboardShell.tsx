@@ -3,6 +3,7 @@
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { adminNavItems, hqNavItems } from "./nav-config";
+import { EnvironmentBanner } from "@/components/EnvironmentBanner";
 import { Sidebar } from "./Sidebar";
 import { Topbar } from "./Topbar";
 
@@ -39,6 +40,7 @@ export function DashboardShell({
       )}
 
       <div className="flex min-w-0 flex-1 flex-col lg:ml-0">
+        <EnvironmentBanner />
         <Topbar
           variant={variant}
           pathname={pathname}

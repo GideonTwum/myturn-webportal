@@ -3,6 +3,7 @@ import { AuthGuard } from "@nestjs/passport";
 import { UserRole } from "@prisma/client";
 import { Roles } from "../common/decorators/roles.decorator";
 import { RolesGuard } from "../common/guards/roles.guard";
+import { StagingAuthGuard } from "../common/guards/staging-auth.guard";
 import { AuthService } from "./auth.service";
 import { LoginDto } from "./dto/login.dto";
 import { MemberPhoneLoginDto } from "./dto/member-phone.dto";
@@ -19,6 +20,7 @@ export class AuthController {
   }
 
   /** Temporary web member portal: phone-only session (staging — use OTP/MoMo later). */
+  @UseGuards(StagingAuthGuard)
   @Post("member-phone")
   memberPhone(@Body() body: MemberPhoneLoginDto) {
     return this.auth.loginMemberByPhone(body.phone);

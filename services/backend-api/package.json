@@ -21,8 +21,13 @@
     "prisma:studio": "node scripts/prisma-cli.cjs studio",
     "prisma:seed": "node scripts/prisma-cli.cjs db seed",
     "db:seed": "node scripts/prisma-cli.cjs db seed",
+    "db:seed:local": "node scripts/seed-local.cjs",
     "seed": "node scripts/prisma-cli.cjs db seed",
-    "seed:members": "ts-node --project prisma/tsconfig.json prisma/seed-members.ts"
+    "seed:members": "ts-node --project prisma/tsconfig.json prisma/seed-members.ts",
+    "seed:staging": "ts-node --project prisma/tsconfig.json prisma/seed-staging.ts",
+    "seed:staging:local": "node scripts/seed-staging-local.cjs",
+    "db:wipe:local": "node scripts/wipe-local.cjs",
+    "typecheck": "tsc -p tsconfig.build.json --noEmit"
   },
   "prisma": {
     "seed": "ts-node --project prisma/tsconfig.json prisma/seed.ts"
@@ -45,7 +50,8 @@
     "passport-jwt": "^4.0.1",
     "passport-local": "^1.0.0",
     "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.1"
+    "rxjs": "^7.8.1",
+    "ioredis": "^5.6.1"
   },
   "devDependencies": {
     "@nestjs/cli": "^10.4.9",

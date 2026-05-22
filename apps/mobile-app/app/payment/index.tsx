@@ -124,6 +124,14 @@ export default function MoMoPaymentScreen() {
             </Text>
           </View>
           {err ? <Text style={styles.error}>{err}</Text> : null}
+          {err ? (
+            <GradientButton
+              label="Retry"
+              variant="ghost"
+              onPress={simulateApprove}
+              style={{ marginBottom: 8 }}
+            />
+          ) : null}
           <GradientButton
             label={flow.isApproving ? "Approving…" : "Simulate MoMo approval (staging)"}
             onPress={simulateApprove}

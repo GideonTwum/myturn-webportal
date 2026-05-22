@@ -1,5 +1,5 @@
 require("crypto");
-import { Module } from "@nestjs/common";
+import { MiddlewareConsumer, Module, NestModule } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { join } from "node:path";
 import { ScheduleModule } from "@nestjs/schedule";
@@ -25,7 +25,9 @@ import { CycleRiskModule } from "./cycle-risk/cycle-risk.module";
 import { MemberModule } from "./member/member.module";
 import { MemberVerificationModule } from "./member-verification/member-verification.module";
 import { PaymentRequestsModule } from "./payment-requests/payment-requests.module";
-import { AppController } from "./app.controller";
+import { HealthModule } from "./health/health.module";
+import { WebhooksModule } from "./webhooks/webhooks.module";
+import { CorrelationMiddleware } from "./common/correlation/correlation.middleware";
 
 @Module({
   imports: [
@@ -57,7 +59,12 @@ import { AppController } from "./app.controller";
     MemberModule,
     MemberVerificationModule,
     PaymentRequestsModule,
+    HealthModule,
+    WebhooksModule,
   ],
-  controllers: [AppController],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer.apply(CorrelationMiddleware).forRoutes("*");
+  }
+}

@@ -10,6 +10,7 @@ import {
 import { AuthGuard } from "@nestjs/passport";
 import { UserRole } from "@prisma/client";
 import { Roles } from "../common/decorators/roles.decorator";
+import { MockFeaturesGuard } from "../common/guards/mock-features.guard";
 import { RolesGuard } from "../common/guards/roles.guard";
 import { PayoutsService } from "./payouts.service";
 
@@ -29,6 +30,7 @@ export class PayoutsController {
    * Mock / manual cycle completion: records payout + margin split when all contributions are paid.
    * Not a real MoMo disbursement yet; use for staging until payout provider is integrated.
    */
+  @UseGuards(MockFeaturesGuard)
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
   @Post("mock/finalize-cycle")
   mockFinalizeCycle(

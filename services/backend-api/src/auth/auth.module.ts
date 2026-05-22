@@ -7,6 +7,7 @@ import { UsersModule } from "../users/users.module";
 import { AuthController } from "./auth.controller";
 import { AuthService } from "./auth.service";
 import { OtpController } from "./otp.controller";
+import { OtpRateLimiter } from "./otp/otp-rate-limiter";
 import { OtpService } from "./otp.service";
 import { resolveJwtSecret } from "./jwt-secret";
 import { JwtStrategy } from "./jwt.strategy";
@@ -26,7 +27,7 @@ import { JwtStrategy } from "./jwt.strategy";
     }),
   ],
   controllers: [AuthController, OtpController],
-  providers: [AuthService, OtpService, JwtStrategy],
+  providers: [AuthService, OtpService, OtpRateLimiter, JwtStrategy],
   exports: [AuthService, OtpService],
 })
 export class AuthModule {}

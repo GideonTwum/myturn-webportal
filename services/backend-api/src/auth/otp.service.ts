@@ -9,29 +9,34 @@ import { randomBytes } from "crypto";
 import { AuthService } from "./auth.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { UsersService } from "../users/users.service";
+import { getPlatformFeatureFlags } from "../common/platform-env";
+import { OtpRateLimiter } from "./otp/otp-rate-limiter";
+import type { OtpRecord, OtpStoreAdapter } from "./otp/otp-store.adapter";
+import { createOtpStore, type OtpStoreKind } from "./otp/otp-store.factory";
+import { createSmsProvider, type SmsProvider } from "./otp/sms-provider.interface";
+import { logOtpEvent } from "./otp/otp-telemetry";
 
-type OtpEntry = {
-  code: string;
-  expiresAt: number;
-  attempts: number;
-};
+const OTP_TTL_MS = Number(process.env.OTP_TTL_MS ?? 5 * 60 * 1000);
+const MAX_ATTEMPTS = Number(process.env.OTP_MAX_ATTEMPTS ?? 5);
 
-const OTP_TTL_MS = 5 * 60 * 1000;
-const MAX_ATTEMPTS = 5;
-
-/**
- * Staging OTP store — replace `deliverOtp` with SMS provider (Twilio, Africa's Talking, etc.).
- */
 @Injectable()
 export class OtpService {
   private readonly logger = new Logger(OtpService.name);
-  private readonly store = new Map<string, OtpEntry>();
+  private readonly store: OtpStoreAdapter;
+  readonly storeKind: OtpStoreKind;
+  private readonly sms: SmsProvider;
 
   constructor(
     private prisma: PrismaService,
     private auth: AuthService,
     private users: UsersService,
-  ) {}
+    private rateLimiter: OtpRateLimiter,
+  ) {
+    const { store, kind } = createOtpStore();
+    this.store = store;
+    this.storeKind = kind;
+    this.sms = createSmsProvider((msg) => this.logger.log(msg));
+  }
 
   normalizePhone(phone: string): string {
     const digits = phone.replace(/\D/g, "");
@@ -43,23 +48,38 @@ export class OtpService {
 
   async requestOtp(phone: string) {
     const digits = this.normalizePhone(phone);
+    try {
+      await this.rateLimiter.assertCanRequestOtp(digits);
+    } catch (e) {
+      logOtpEvent(this.logger, "otp.request.denied", {
+        phone: digits,
+        reason: e instanceof Error ? e.message : "rate_limited",
+      });
+      throw e;
+    }
+
     const code = this.generateCode();
-    this.store.set(digits, {
+    const record: OtpRecord = {
       code,
       expiresAt: Date.now() + OTP_TTL_MS,
       attempts: 0,
+    };
+    await this.store.set(digits, record);
+    const smsResult = await this.sms.sendOtp(digits, code);
+
+    logOtpEvent(this.logger, "otp.request", {
+      phone: digits,
+      store: this.storeKind,
+      smsProvider: smsResult.provider,
     });
 
-    await this.deliverOtp(digits, code);
-
-    const isProd = process.env.NODE_ENV === "production";
+    const flags = getPlatformFeatureFlags();
     return {
       message: "If this number is registered, a verification code was sent.",
-      ...(isProd ? {} : { debugCode: code }),
+      ...(flags.debugOtpInResponses ? { debugCode: code } : {}),
     };
   }
 
-  /** Lookup keys for in-memory OTP (request + verify must share a key). */
   private otpLookupKeys(phone: string): string[] {
     const digits = this.normalizePhone(phone);
     const keys = new Set<string>([digits]);
@@ -79,43 +99,68 @@ export class OtpService {
   async verifyOtp(phone: string, code: string) {
     const trimmedCode = code.replace(/\s/g, "").trim();
     const keys = this.otpLookupKeys(phone);
-    let entry: OtpEntry | undefined;
+    const primaryKey = this.normalizePhone(phone);
+
+    await this.rateLimiter.assertCanVerify(primaryKey);
+
+    let entry: OtpRecord | null = null;
     let matchedKey: string | undefined;
     for (const key of keys) {
-      const candidate = this.store.get(key);
+      const candidate = await this.store.get(key);
       if (candidate) {
         entry = candidate;
         matchedKey = key;
         break;
       }
     }
+
+    logOtpEvent(this.logger, "otp.verify.attempt", {
+      phone: primaryKey,
+      store: this.storeKind,
+      found: Boolean(entry),
+    });
+
     if (!entry || !matchedKey) {
+      logOtpEvent(this.logger, "otp.verify.failure", {
+        phone: primaryKey,
+        reason: "not_found",
+      });
       throw new UnauthorizedException("Invalid or expired code");
     }
     if (Date.now() > entry.expiresAt) {
-      this.store.delete(matchedKey);
+      await this.store.delete(matchedKey);
+      logOtpEvent(this.logger, "otp.verify.failure", {
+        phone: primaryKey,
+        reason: "expired",
+      });
       throw new UnauthorizedException("Invalid or expired code");
     }
     if (entry.attempts >= MAX_ATTEMPTS) {
-      this.store.delete(matchedKey);
+      await this.store.delete(matchedKey);
+      logOtpEvent(this.logger, "otp.verify.locked", { phone: primaryKey });
       throw new UnauthorizedException("Too many attempts");
     }
+
     entry.attempts += 1;
+    await this.store.set(matchedKey, entry);
+
     if (entry.code !== trimmedCode) {
+      logOtpEvent(this.logger, "otp.verify.failure", {
+        phone: primaryKey,
+        reason: "mismatch",
+        attempts: entry.attempts,
+      });
       throw new UnauthorizedException("Invalid or expired code");
     }
-    this.store.delete(matchedKey);
 
+    await this.store.delete(matchedKey);
     const digits = this.normalizePhone(phone);
     const user = await this.resolveOrCreateMemberByPhone(digits, phone.trim());
+    logOtpEvent(this.logger, "otp.verify.success", {
+      phone: primaryKey,
+      userId: user.id,
+    });
     return this.auth.issueAccessTokenForUserId(user.id);
-  }
-
-  /** Hook for future SMS/WhatsApp provider. */
-  private async deliverOtp(phone: string, code: string) {
-    this.logger.log(
-      `[OTP mock] phone=${phone} code=${code} (configure SMS provider in production)`,
-    );
   }
 
   private generateCode(): string {

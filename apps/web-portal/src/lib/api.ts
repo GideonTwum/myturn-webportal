@@ -19,7 +19,7 @@ function normalizeConfiguredApiBase(raw: string): string {
   return `https://${noTrailingSlash.replace(/^\/+/, "")}`;
 }
 
-function getApiBase(): string {
+export function getApiBase(): string {
   const raw = process.env.NEXT_PUBLIC_API_URL?.trim();
   if (raw) return normalizeConfiguredApiBase(raw);
   if (process.env.NODE_ENV === "development") {

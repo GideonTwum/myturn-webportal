@@ -1,6 +1,7 @@
 import { type ReactNode } from "react";
 import { View } from "react-native";
 import { IS_MOCK_UI } from "@/constants/app-mode";
+import { ConnectionStatus } from "@/components/ConnectionStatus";
 import { DemoBanner } from "@/components/DemoBanner";
 import { AuthProvider } from "@/providers/AuthProvider";
 import { DemoProvider } from "@/providers/DemoProvider";
@@ -14,6 +15,7 @@ export function RootProviders({ children }: { children: ReactNode }) {
       <AuthProvider>
         <View style={{ flex: 1 }}>
           <DemoBanner />
+          <ConnectionStatus />
           {app}
         </View>
       </AuthProvider>

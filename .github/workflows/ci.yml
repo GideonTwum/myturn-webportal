@@ -1,0 +1,125 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master, develop]
+  pull_request:
+    branches: [main, master, develop]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "20"
+  DATABASE_URL: postgresql://postgres:postgres@localhost:5432/myturn?schema=public
+  REDIS_URL: redis://localhost:6379
+  JWT_SECRET: ci-jwt-secret-not-for-production
+  DEPLOYMENT_TIER: local
+  MYTURN_LOCAL_DB: "1"
+  STAGING_API_URL: http://localhost:3001/api
+  NEXT_PUBLIC_API_URL: http://localhost:3001/api
+  NEXT_PUBLIC_DEPLOYMENT_TIER: local
+
+jobs:
+  ecosystem:
+    name: Ecosystem CI
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: myturn
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d myturn"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build shared packages
+        run: npm run build:shared && npm run build:api-client
+
+      - name: Prisma generate
+        working-directory: services/backend-api
+        run: npx prisma generate
+
+      - name: Database migrate
+        working-directory: services/backend-api
+        run: npx prisma migrate deploy
+
+      - name: Seed staging ecosystem
+        run: npm run db:seed:local && npm run seed:staging:local
+
+      - name: Verify staging seed
+        run: node scripts/verify-staging-seed.mjs
+
+      - name: Shared package tests
+        run: npm run test
+
+      - name: Backend typecheck
+        working-directory: services/backend-api
+        run: npm run typecheck
+
+      - name: Backend build
+        working-directory: services/backend-api
+        run: npm run build
+
+      - name: Mobile typecheck
+        working-directory: apps/mobile-app
+        run: npm run typecheck
+
+      - name: Web lint
+        working-directory: apps/web-portal
+        run: npm run lint
+
+      - name: Web typecheck
+        working-directory: apps/web-portal
+        run: npm run typecheck
+
+      - name: Web build
+        run: npm run build:web
+
+      - name: Start API for smoke tests
+        working-directory: services/backend-api
+        run: |
+          node dist/main.js &
+          echo $! > /tmp/api.pid
+
+      - name: Wait for API health
+        run: node scripts/wait-for-api.mjs
+
+      - name: E2E staging smoke tests
+        run: npm run test:e2e-staging
+
+      - name: Stop API
+        if: always()
+        run: |
+          if [ -f /tmp/api.pid ]; then kill "$(cat /tmp/api.pid)" 2>/dev/null || true; fi

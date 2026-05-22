@@ -6,6 +6,7 @@ import { useEffect } from "react";
 import { UserRole } from "@myturn/shared";
 import { getStoredToken } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
+import { EnvironmentBanner } from "@/components/EnvironmentBanner";
 import { cn } from "@/lib/cn";
 
 export default function MemberLayout({
@@ -38,6 +39,7 @@ export default function MemberLayout({
   if (isSignIn) {
     return (
       <div className="min-h-screen bg-surface-muted">
+        <EnvironmentBanner />
         <div className="border-b border-gray-200 bg-white px-4 py-3">
           <div className="mx-auto flex max-w-lg items-center justify-between">
             <span className="font-bold text-brand-green">MyTurn member</span>
@@ -73,6 +75,7 @@ export default function MemberLayout({
 
   return (
     <div className="min-h-screen bg-surface-muted">
+      <EnvironmentBanner />
       <header className="sticky top-0 z-10 border-b border-gray-200 bg-white/95 px-4 py-3 backdrop-blur">
         <div className="mx-auto flex max-w-lg items-center justify-between gap-3">
           <Link href="/member" className="font-bold text-brand-green">
