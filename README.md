@@ -1,6 +1,6 @@
 # MyTurn MVP (monorepo)
 
-Web portal (admin + HQ) and NestJS API with Prisma/Postgres. MoMo and mobile app are out of scope for this MVP.
+Web portal (admin + HQ), Expo member mobile foundation, and NestJS API with Prisma/Postgres. MoMo production payments are out of scope for this MVP.
 
 ## Environment variables
 
@@ -85,7 +85,17 @@ npm run db:migrate:deploy
 npm run db:seed
 npm run dev:api
 npm run dev:web
+npm run build:api-client
+npm run dev:mobile          # Expo member app (see apps/mobile-app/README.md)
 ```
+
+### Mobile (`apps/mobile-app`)
+
+| Variable | Purpose |
+|----------|---------|
+| `EXPO_PUBLIC_API_URL` | API base including `/api` (e.g. `http://localhost:3001/api`). On a physical device, use your machine's LAN IP, not `localhost`. |
+
+Member APIs use the standardized envelope `{ success, data }` under `/api/member/*`. OTP scaffold: `POST /api/auth/otp/request` and `POST /api/auth/otp/verify` (mock SMS in non-production).
 
 ## Database / Prisma
 

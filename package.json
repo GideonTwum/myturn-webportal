@@ -9,18 +9,26 @@
   "scripts": {
     "dev:web": "npm run dev -w web-portal",
     "dev:api": "npm run start:dev -w backend-api",
+    "dev:mobile": "npm run start -w mobile-app",
+    "dev:mobile:clear": "npm run start:clear -w mobile-app",
     "build:shared": "npm run build -w @myturn/shared",
+    "build:api-client": "npm run build -w @myturn/api-client",
     "build:web": "npm run build -w web-portal",
-    "build": "npm run build:shared && npm run build -w backend-api && npm run build:web",
+    "build": "npm run build:shared && npm run build:api-client && npm run build -w backend-api && npm run build:web",
     "db:generate": "npm run db:generate -w backend-api",
     "db:migrate": "npm run prisma:migrate -w backend-api",
     "db:migrate:deploy": "npm run prisma:migrate:deploy -w backend-api",
     "db:push": "npm run db:push -w backend-api",
     "db:seed": "npm run db:seed -w backend-api",
     "seed": "npm run db:seed -w backend-api",
-    "test": "npm run test -w @myturn/shared"
+    "test": "npm run test -w @myturn/shared",
+    "verify:react": "node scripts/verify-react-singleton.mjs"
   },
   "engines": {
     "node": ">=18"
+  },
+  "overrides": {
+    "react": "19.1.0",
+    "react-dom": "19.1.0"
   }
 }

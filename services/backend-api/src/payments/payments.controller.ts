@@ -10,7 +10,9 @@ import {
 import { AuthGuard } from "@nestjs/passport";
 import { UserRole } from "@prisma/client";
 import { Roles } from "../common/decorators/roles.decorator";
+import { RequireVerifiedMember } from "../common/decorators/require-verified-member.decorator";
 import { RolesGuard } from "../common/guards/roles.guard";
+import { VerifiedMemberGuard } from "../common/guards/verified-member.guard";
 import { PaymentsService } from "./payments.service";
 
 type ReqUser = { user: { sub: string; role: UserRole } };
@@ -22,7 +24,7 @@ type ReqUser = { user: { sub: string; role: UserRole } };
  * Staging-only: `POST .../mock/contribution-payment`
  */
 @Controller("payments")
-@UseGuards(AuthGuard("jwt"), RolesGuard)
+@UseGuards(AuthGuard("jwt"), RolesGuard, VerifiedMemberGuard)
 export class PaymentsController {
   constructor(private payments: PaymentsService) {}
 
@@ -31,6 +33,7 @@ export class PaymentsController {
    * Mobile Money (MoMo) integration is not wired yet.
    */
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.USER)
+  @RequireVerifiedMember()
   @Post("mock/contribution-payment")
   mockContributionPayment(
     @Req() req: ReqUser,

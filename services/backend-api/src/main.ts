@@ -1,7 +1,9 @@
 import "./bootstrap-env";
 import { Logger, ValidationPipe } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { NestFactory } from "@nestjs/core";
+import { NestFactory, Reflector } from "@nestjs/core";
+import { ApiExceptionFilter } from "./common/filters/api-exception.filter";
+import { ApiResponseInterceptor } from "./common/interceptors/api-response.interceptor";
 import { webcrypto } from "node:crypto";
 import { AppModule } from "./app.module";
 
@@ -43,6 +45,10 @@ async function bootstrap() {
   }
 
   app.setGlobalPrefix("api");
+  app.useGlobalInterceptors(
+    new ApiResponseInterceptor(app.get(Reflector)),
+  );
+  app.useGlobalFilters(new ApiExceptionFilter());
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,

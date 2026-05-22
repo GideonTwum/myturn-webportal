@@ -10,9 +10,11 @@ import {
   ContributionFrequency,
   ContributionStatus,
   DepositStatus,
+  GhanaCardVerificationStatus,
   GroupMemberStatus,
   GroupScheduleUnit,
   GroupStatus,
+  MemberAuthorizationLevel,
   MemberCycleStanding,
   PayoutMode,
   Prisma,
@@ -26,6 +28,7 @@ import {
   summarizeCycle,
 } from "@myturn/shared";
 import { memberCyclePaymentDays } from "../common/member-cycle-payment-days";
+import { isStagingRelaxTrust } from "../common/staging-trust";
 import { CycleComplianceService } from "../cycle-risk/cycle-compliance.service";
 import { CycleDepositsService } from "../cycle-risk/cycle-deposits.service";
 import { PrismaService } from "../prisma/prisma.service";
@@ -422,6 +425,18 @@ export class GroupsService {
     return raw.trim().toUpperCase().replace(/\s+/g, "");
   }
 
+  /** DRAFT groups accept new members; ACTIVE only when roster still empty (admin activated early). */
+  private groupAcceptsNewMembers(
+    status: GroupStatus,
+    activeMemberCount: number,
+    memberSlots: number,
+  ): boolean {
+    if (activeMemberCount >= memberSlots) return false;
+    if (status === GroupStatus.DRAFT) return true;
+    if (status === GroupStatus.ACTIVE && activeMemberCount === 0) return true;
+    return false;
+  }
+
   private async ensureUniqueInviteCode(): Promise<string> {
     const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
     for (let attempt = 0; attempt < 64; attempt++) {
@@ -445,24 +460,44 @@ export class GroupsService {
       where: { inviteCode },
       include: {
         members: { where: { status: GroupMemberStatus.ACTIVE } },
+        admin: {
+          select: { firstName: true, lastName: true },
+        },
       },
     });
     if (!group) {
       throw new NotFoundException("Invalid invite code");
     }
-    if (group.status !== GroupStatus.DRAFT) {
+    const currentMembers = group.members.length;
+    if (
+      !this.groupAcceptsNewMembers(
+        group.status,
+        currentMembers,
+        group.memberSlots,
+      )
+    ) {
       throw new BadRequestException(
-        "This group is no longer accepting members",
+        group.status === GroupStatus.DRAFT
+          ? "This group is full"
+          : "This group is no longer accepting members",
       );
     }
-    const currentMembers = group.members.length;
-    if (currentMembers >= group.memberSlots) {
-      throw new BadRequestException("This group is full");
-    }
+    const nextTurnOrder = currentMembers + 1;
+    const adminName = [group.admin.firstName, group.admin.lastName]
+      .filter(Boolean)
+      .join(" ")
+      .trim() || "Group admin";
     return {
+      inviteCode: group.inviteCode,
       name: group.name,
+      description: group.description,
       contributionAmount: group.contributionAmount.toString(),
       payoutMode: group.payoutMode,
+      frequency: group.frequency,
+      adminName,
+      groupStartDate: group.groupStartDate?.toISOString().slice(0, 10) ?? null,
+      nextCycleStartEstimate: group.groupStartDate?.toISOString().slice(0, 10) ?? null,
+      payoutPositionPreview: `${nextTurnOrder} of ${group.memberSlots}`,
       ...(group.payoutMode === PayoutMode.CYCLE
         ? {
             daysPerCycle: group.daysPerCycle,
@@ -499,13 +534,18 @@ export class GroupsService {
     if (!group) {
       throw new NotFoundException("Invalid invite code");
     }
-    if (group.status !== GroupStatus.DRAFT) {
+    if (
+      !this.groupAcceptsNewMembers(
+        group.status,
+        group.members.length,
+        group.memberSlots,
+      )
+    ) {
       throw new BadRequestException(
-        "This group is no longer accepting members",
+        group.status === GroupStatus.DRAFT
+          ? "This group is full"
+          : "This group is no longer accepting members",
       );
-    }
-    if (group.members.length >= group.memberSlots) {
-      throw new BadRequestException("This group is full");
     }
 
     const digits = input.phone.replace(/\D/g, "");
@@ -561,6 +601,19 @@ export class GroupsService {
       throw new BadRequestException(
         "This phone number already has an account. Sign in from the member page, then join this group again.",
       );
+    }
+
+    if (!isStagingRelaxTrust()) {
+      if (
+        user.memberAuthorizationLevel !== MemberAuthorizationLevel.VERIFIED_MEMBER ||
+        user.ghanaCardVerificationStatus !== GhanaCardVerificationStatus.VERIFIED
+      ) {
+        throw new ForbiddenException({
+          message:
+            "Verify your Ghana Card to join this group and unlock participation.",
+          code: "GHANA_CARD_REQUIRED",
+        });
+      }
     }
 
     const already = group.members.some((m) => m.userId === user.id);

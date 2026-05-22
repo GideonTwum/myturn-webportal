@@ -4,6 +4,7 @@ import * as bcrypt from "bcrypt";
 import { UserRole } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import type { JwtPayload } from "./jwt.strategy";
+import { toMemberAuthUser } from "./member-user.mapper";
 
 @Injectable()
 export class AuthService {
@@ -52,6 +53,10 @@ export class AuthService {
     firstName: string | null;
     lastName: string | null;
   }) {
+    const full =
+      user.role === UserRole.USER
+        ? await this.prisma.user.findUnique({ where: { id: user.id } })
+        : null;
     const payload: JwtPayload = {
       sub: user.id,
       email: user.email,
@@ -63,13 +68,16 @@ export class AuthService {
     );
     return {
       access_token: token,
-      user: {
-        id: user.id,
-        email: user.email,
-        role: user.role,
-        firstName: user.firstName,
-        lastName: user.lastName,
-      },
+      user:
+        full && full.role === UserRole.USER
+          ? toMemberAuthUser(full)
+          : {
+              id: user.id,
+              email: user.email,
+              role: user.role,
+              firstName: user.firstName,
+              lastName: user.lastName,
+            },
     };
   }
 

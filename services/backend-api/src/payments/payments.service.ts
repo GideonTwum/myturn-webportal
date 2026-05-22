@@ -19,6 +19,7 @@ import { CycleComplianceService } from "../cycle-risk/cycle-compliance.service";
 import { LedgerService } from "../ledger/ledger.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService } from "../prisma/prisma.service";
+import { MemberParticipationService } from "../member/member-participation.service";
 
 @Injectable()
 export class PaymentsService {
@@ -30,7 +31,14 @@ export class PaymentsService {
     private notifications: NotificationsService,
     private audit: AuditLogsService,
     private cycleCompliance: CycleComplianceService,
+    private participation: MemberParticipationService,
   ) {}
+
+  private async assertUserCanPay(userId: string, role: UserRole) {
+    if (role === UserRole.USER) {
+      await this.participation.assertCanParticipateFinancially(userId);
+    }
+  }
 
   /**
    * Records one per-day contribution payment (mock / staging).
@@ -48,6 +56,7 @@ export class PaymentsService {
     if (!contribution) {
       throw new NotFoundException("Contribution not found");
     }
+    await this.assertUserCanPay(recordedByUserId, recordedByRole);
     if (recordedByRole === UserRole.USER) {
       if (contribution.userId !== recordedByUserId) {
         throw new ForbiddenException();

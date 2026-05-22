@@ -22,6 +22,9 @@ import { TransactionsModule } from "./transactions/transactions.module";
 import { AdminOverviewModule } from "./admin-overview/admin-overview.module";
 import { HqFinancialModule } from "./hq-financial/hq-financial.module";
 import { CycleRiskModule } from "./cycle-risk/cycle-risk.module";
+import { MemberModule } from "./member/member.module";
+import { MemberVerificationModule } from "./member-verification/member-verification.module";
+import { PaymentRequestsModule } from "./payment-requests/payment-requests.module";
 import { AppController } from "./app.controller";
 
 @Module({
@@ -51,6 +54,9 @@ import { AppController } from "./app.controller";
     HqFinancialModule,
     AdminOverviewModule,
     CycleRiskModule,
+    MemberModule,
+    MemberVerificationModule,
+    PaymentRequestsModule,
   ],
   controllers: [AppController],
 })

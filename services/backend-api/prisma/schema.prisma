@@ -96,6 +96,32 @@ enum LedgerEntryType {
   DEBIT
 }
 
+enum DevicePlatform {
+  IOS
+  ANDROID
+  WEB
+}
+
+/** Member trust tier — phone OTP vs Ghana Card verified. */
+enum MemberAuthorizationLevel {
+  PHONE_VERIFIED
+  VERIFIED_MEMBER
+}
+
+enum GhanaCardVerificationStatus {
+  NOT_SUBMITTED
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+enum PaymentRequestStatus {
+  PENDING
+  APPROVED
+  FAILED
+  EXPIRED
+}
+
 model User {
   id           String   @id @default(cuid())
   email        String   @unique
@@ -107,10 +133,26 @@ model User {
   isActive     Boolean  @default(true)
   /** Set when the user is marked DEFAULTED on a CYCLE group (trust / ops flag). */
   cycleDefaultFlagged Boolean @default(false)
+  memberAuthorizationLevel MemberAuthorizationLevel @default(PHONE_VERIFIED)
+  ghanaCardVerificationStatus GhanaCardVerificationStatus @default(NOT_SUBMITTED)
+  /** SHA-256 of normalized Ghana Card number — never expose in APIs. */
+  ghanaCardNumberHash String? @unique
+  ghanaCardLast4      String?
+  verificationSubmittedAt DateTime?
+  verificationApprovedAt  DateTime?
+  verificationRejectedAt  DateTime?
+  verificationRejectionReason String?
+  selfieAssetKey      String?
+  cardImageAssetKey   String?
+  completedGroupsCount Int @default(0)
+  missedContributionCount Int @default(0)
+  contributionStreak  Int @default(0)
+  trustScore          Int @default(0)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
   wallet            Wallet?
+  paymentRequests   PaymentRequest[]
   groupMemberships  GroupMember[]
   groupsAdmin       Group[]           @relation("GroupAdmin")
   contributions     Contribution[]
@@ -120,6 +162,7 @@ model User {
   reviewedRequests  AdminRequest[]    @relation("AdminRequestReviewer")
   adminEarnings     AdminEarning[]
   notifications     Notification[]
+  deviceTokens      DeviceToken[]
   auditLogs         AuditLog[]        @relation("AuditActor")
 }
 
@@ -164,11 +207,12 @@ model Group {
   createdAt          DateTime               @default(now())
   updatedAt          DateTime               @updatedAt
 
-  members       GroupMember[]
-  contributions Contribution[]
-  payouts       Payout[]
-  payments      Payment[]
-  adminEarnings AdminEarning[]
+  members         GroupMember[]
+  contributions   Contribution[]
+  payouts         Payout[]
+  payments        Payment[]
+  paymentRequests PaymentRequest[]
+  adminEarnings   AdminEarning[]
 }
 
 model GroupMember {
@@ -206,7 +250,8 @@ model Contribution {
   createdAt   DateTime           @default(now())
   updatedAt   DateTime           @updatedAt
 
-  payments Payment[]
+  payments        Payment[]
+  paymentRequests PaymentRequest[]
 
   @@index([groupId, cycleNumber])
   @@index([userId])
@@ -305,6 +350,45 @@ model Notification {
   createdAt DateTime @default(now())
 
   @@index([userId, read])
+}
+
+/** Expo push token registration — delivery provider wired in a later phase. */
+model DeviceToken {
+  id         String         @id @default(cuid())
+  userId     String
+  user       User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token      String
+  platform   DevicePlatform
+  lastSeenAt DateTime       @default(now())
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+
+  @@unique([userId, token])
+  @@index([userId])
+}
+
+/** MoMo / mobile-money contribution request lifecycle (provider integration later). */
+model PaymentRequest {
+  id              String               @id @default(cuid())
+  userId          String
+  user            User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  groupId         String
+  group           Group                @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  contributionId  String
+  contribution    Contribution         @relation(fields: [contributionId], references: [id], onDelete: Cascade)
+  amount          Decimal              @db.Decimal(18, 2)
+  status          PaymentRequestStatus @default(PENDING)
+  externalRef     String               @unique @default(cuid())
+  providerRef     String?
+  expiresAt       DateTime
+  approvedAt      DateTime?
+  failureReason   String?
+  metadata        Json?
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  @@index([userId, status])
+  @@index([contributionId])
 }
 
 model Setting {
