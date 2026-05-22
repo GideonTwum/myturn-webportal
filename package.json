@@ -33,7 +33,7 @@
     "verify:react": "node scripts/verify-react-singleton.mjs"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   },
   "overrides": {
     "react": "19.1.0",
