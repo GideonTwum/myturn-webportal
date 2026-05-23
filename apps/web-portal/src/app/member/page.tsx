@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import { apiFetch } from "@/lib/api";
+import { getMyturnApi } from "@/lib/myturn-api";
 import { useSWR, useSWRConfig } from "@/lib/swr";
 import { cn } from "@/lib/cn";
 
@@ -45,10 +45,7 @@ export default function MemberHomePage() {
     setPayMsg(null);
     setPayBusy(contributionId);
     try {
-      await apiFetch("/payments/mock/contribution-payment", {
-        method: "POST",
-        body: JSON.stringify({ contributionId }),
-      });
+      await getMyturnApi().admin.mockContributionPayment({ contributionId });
       await mutate("/groups/member/participation");
       setPayMsg("Payment recorded.");
     } catch (e) {

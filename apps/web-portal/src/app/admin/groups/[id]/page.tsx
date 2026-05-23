@@ -11,7 +11,7 @@ import {
 } from "@myturn/shared";
 import { ServiceMarginSelector } from "@/components/admin/ServiceMarginSelector";
 import { Copy, Pencil } from "lucide-react";
-import { apiFetch } from "@/lib/api";
+import { getMyturnApi } from "@/lib/myturn-api";
 import { LIVE_POLL_MS, useSWR, useSWRConfig } from "@/lib/swr";
 import { StatusBadge } from "@/components/dashboard/StatusBadge";
 import { cn } from "@/lib/cn";
@@ -100,21 +100,16 @@ export default function AdminGroupDetailPage() {
     setErr(null);
     setPending(true);
     try {
-      await apiFetch(`/groups/${group.id}`, {
-        method: "PATCH",
-        body: JSON.stringify({
-          name,
-          description: description || undefined,
-          contributionAmount: Number(contributionAmount),
-          payoutMode,
-          daysPerCycle:
-            payoutMode === PayoutMode.CYCLE
-              ? Number(daysPerCycle)
-              : undefined,
-          groupSize: Number(groupSize),
-          startDate,
-          serviceMarginBps,
-        }),
+      await getMyturnApi().admin.patchGroup(group.id, {
+        name,
+        description: description || undefined,
+        contributionAmount: Number(contributionAmount),
+        payoutMode,
+        daysPerCycle:
+          payoutMode === PayoutMode.CYCLE ? Number(daysPerCycle) : undefined,
+        groupSize: Number(groupSize),
+        startDate,
+        serviceMarginBps,
       });
       setEditOpen(false);
       await mutate(`/groups/${id}`);
@@ -130,7 +125,7 @@ export default function AdminGroupDetailPage() {
     setErr(null);
     setActPending(true);
     try {
-      await apiFetch(`/groups/${group.id}/activate`, { method: "POST" });
+      await getMyturnApi().admin.activateGroup(group.id);
       await mutate(`/groups/${id}`);
       router.refresh();
     } catch (x) {

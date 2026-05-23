@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
-import { apiFetch, resolveAccessToken } from "@/lib/api";
+import { resolveAccessToken } from "@myturn/api-client";
+import { getMyturnApi } from "@/lib/myturn-api";
 import type { AuthUser } from "@/lib/auth-context";
 import { useAuth } from "@/lib/auth-context";
 import { cn } from "@/lib/cn";
@@ -54,9 +55,9 @@ export default function JoinGroupPage() {
     }
     setPending(true);
     try {
-      const p = await apiFetch<InvitePreview>(
-        `/groups/invite/${encodeURIComponent(trimmed)}`,
-      );
+      const p = (await getMyturnApi().groups.invitePreview(
+        trimmed,
+      )) as InvitePreview;
       setPreview(p);
       setStep("form");
     } catch (err) {
@@ -72,15 +73,12 @@ export default function JoinGroupPage() {
     if (!preview) return;
     setPending(true);
     try {
-      const res = await apiFetch<JoinResponse>("/groups/join", {
-        method: "POST",
-        body: JSON.stringify({
-          inviteCode: code.trim().toUpperCase(),
-          fullName,
-          phone,
-        }),
-      });
-      applyMemberSession(resolveAccessToken(res), res.user);
+      const res = (await getMyturnApi().groups.join({
+        inviteCode: code.trim().toUpperCase(),
+        fullName,
+        phone,
+      })) as JoinResponse;
+      applyMemberSession(resolveAccessToken(res), res.user as AuthUser);
       router.replace("/member");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Join failed");

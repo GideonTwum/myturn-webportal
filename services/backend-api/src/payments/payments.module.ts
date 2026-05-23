@@ -4,11 +4,12 @@ import { MemberModule } from "../member/member.module";
 import { NotificationsModule } from "../notifications/notifications.module";
 import { PaymentsController } from "./payments.controller";
 import { PaymentsService } from "./payments.service";
+import { PaymentIntentService } from "./payment-intent.service";
 
 @Module({
   imports: [NotificationsModule, CycleRiskModule, MemberModule],
   controllers: [PaymentsController],
-  providers: [PaymentsService],
-  exports: [PaymentsService],
+  providers: [PaymentsService, PaymentIntentService],
+  exports: [PaymentsService, PaymentIntentService],
 })
 export class PaymentsModule {}

@@ -12,6 +12,7 @@ import { RequestLoggingInterceptor } from "./common/interceptors/request-logging
 import { webcrypto } from "node:crypto";
 import { AppModule } from "./app.module";
 import { validateStagingEcosystem } from "./common/staging-ecosystem.validation";
+import { logDeploymentDiagnostics } from "./common/railway-startup.validation";
 import { PrismaService } from "./prisma/prisma.service";
 
 /** @nestjs/schedule expects `globalThis.crypto` (Node 20+ provides it). Polyfill for older/host runtimes. */
@@ -24,6 +25,7 @@ async function bootstrap() {
   assertProductionSafety();
   const flags = getPlatformFeatureFlags();
   const logger = new Logger("Bootstrap");
+  logDeploymentDiagnostics(logger);
   logger.log(`Deployment tier: ${flags.tier}`);
   if (flags.mockPayments) {
     logger.warn("Mock payment endpoints ENABLED (staging/local only)");
@@ -43,18 +45,31 @@ async function bootstrap() {
   }
 
   const corsOrigin = config.get<string>("CORS_ORIGIN")?.trim();
-  if (corsOrigin) {
-    const origins = corsOrigin
-      .split(",")
-      .map((o) => o.trim().replace(/\/+$/, ""))
-      .filter(Boolean);
+  const stagingExtra = config.get<string>("STAGING_CORS_EXTRA")?.trim();
+  const tier = flags.tier;
+
+  if (corsOrigin || (tier === "staging" && stagingExtra)) {
+    const origins = new Set<string>();
+    if (corsOrigin) {
+      for (const o of corsOrigin.split(",")) {
+        const trimmed = o.trim().replace(/\/+$/, "");
+        if (trimmed) origins.add(trimmed);
+      }
+    }
+    if (tier === "staging" && stagingExtra) {
+      for (const o of stagingExtra.split(",")) {
+        const trimmed = o.trim().replace(/\/+$/, "");
+        if (trimmed) origins.add(trimmed);
+      }
+    }
+    const originList = [...origins];
     app.enableCors({
-      origin: origins,
+      origin: originList,
       credentials: true,
       methods: ["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
       allowedHeaders: ["Content-Type", "Authorization"],
     });
-    logger.log(`CORS enabled for: ${origins.join(", ")}`);
+    logger.log(`CORS enabled for: ${originList.join(", ")}`);
   } else {
     app.enableCors({
       origin: true,
@@ -81,10 +96,14 @@ async function bootstrap() {
     }),
   );
 
-  const port = config.get<string>("PORT") ?? process.env.PORT ?? "3001";
-  await app.listen(port, '0.0.0.0');
+  const portRaw = config.get<string>("PORT") ?? process.env.PORT ?? "3001";
+  const port = Number.parseInt(String(portRaw), 10);
+  if (!Number.isFinite(port) || port <= 0) {
+    throw new Error(`Invalid PORT: ${portRaw}`);
+  }
+  await app.listen(port, "0.0.0.0");
   logger.log(
-    `backend-api listening on port ${port} globalPrefix=/api NODE_ENV=${process.env.NODE_ENV ?? "undefined"}`,
+    `backend-api listening on 0.0.0.0:${port} globalPrefix=/api NODE_ENV=${process.env.NODE_ENV ?? "undefined"}`,
   );
 }
 

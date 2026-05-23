@@ -40,7 +40,7 @@ npm run seed:staging:local
 npm run test:e2e-staging  # API smoke (backend must be running)
 ```
 
-Full ops guide: **[docs/STAGING_RUNBOOK.md](docs/STAGING_RUNBOOK.md)** · Staging hardening: **[docs/STAGING_HARDENING_SUMMARY.md](docs/STAGING_HARDENING_SUMMARY.md)** · Infrastructure: **[docs/INFRASTRUCTURE_PHASE_SUMMARY.md](docs/INFRASTRUCTURE_PHASE_SUMMARY.md)** · CI: **[docs/CI_RUNBOOK.md](docs/CI_RUNBOOK.md)**
+Full ops guide: **[docs/STAGING_RUNBOOK.md](docs/STAGING_RUNBOOK.md)** · Railway: **[docs/RAILWAY_STAGING_SETUP.md](docs/RAILWAY_STAGING_SETUP.md)** · Staging hardening: **[docs/STAGING_HARDENING_SUMMARY.md](docs/STAGING_HARDENING_SUMMARY.md)** · Infrastructure: **[docs/INFRASTRUCTURE_PHASE_SUMMARY.md](docs/INFRASTRUCTURE_PHASE_SUMMARY.md)** · CI: **[docs/CI_RUNBOOK.md](docs/CI_RUNBOOK.md)**
 
 ## Railway Postgres
 

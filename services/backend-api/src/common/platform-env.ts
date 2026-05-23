@@ -80,6 +80,18 @@ export function assertProductionSafety(): void {
   if (process.env.OTP_DEBUG_CODES?.trim().toLowerCase() === "true") {
     errors.push("OTP_DEBUG_CODES must not be true in production");
   }
+  const sms = process.env.SMS_PROVIDER?.trim().toLowerCase() ?? "console";
+  if (sms === "console" || !process.env.SMS_PROVIDER?.trim()) {
+    errors.push("SMS_PROVIDER must not be console in production (use arkesel)");
+  }
+  const payment =
+    process.env.PAYMENT_PROVIDER?.trim().toLowerCase() ?? "mock";
+  if (payment === "mock" || !process.env.PAYMENT_PROVIDER?.trim()) {
+    errors.push("PAYMENT_PROVIDER must not be mock in production");
+  }
+  if (getPlatformFeatureFlags().debugOtpInResponses) {
+    errors.push("Debug OTP in responses must be disabled in production");
+  }
 
   if (errors.length > 0) {
     throw new Error(

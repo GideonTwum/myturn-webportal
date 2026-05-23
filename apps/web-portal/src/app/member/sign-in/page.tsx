@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
-import { apiFetch, resolveAccessToken } from "@/lib/api";
+import { resolveAccessToken } from "@myturn/api-client";
+import { getMyturnApi } from "@/lib/myturn-api";
 import type { AuthUser } from "@/lib/auth-context";
 import { useAuth } from "@/lib/auth-context";
 import { cn } from "@/lib/cn";
@@ -30,15 +31,8 @@ export default function MemberSignInPage() {
     }
     setPending(true);
     try {
-      const res = await apiFetch<{
-        access_token?: string;
-        accessToken?: string;
-        user: AuthUser;
-      }>("/auth/member-phone", {
-        method: "POST",
-        body: JSON.stringify({ phone: trimmed }),
-      });
-      applyMemberSession(resolveAccessToken(res), res.user);
+      const res = await getMyturnApi().auth.memberPhone(trimmed);
+      applyMemberSession(resolveAccessToken(res), res.user as AuthUser);
       router.replace("/member");
     } catch (err) {
       setError(

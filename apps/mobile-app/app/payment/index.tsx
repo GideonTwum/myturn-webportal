@@ -68,7 +68,19 @@ export default function MoMoPaymentScreen() {
       ? (flow.startError ?? flow.approveError) instanceof Error
         ? (flow.startError ?? flow.approveError)!.message
         : "Payment failed"
-      : null;
+      : flow.isFailed
+        ? "Payment expired or was declined. You can retry."
+        : null;
+
+  async function retryPayment() {
+    setStep(1);
+    try {
+      await flow.startPayment();
+      setStep(2);
+    } catch {
+      /* surfaced via err */
+    }
+  }
 
   return (
     <PremiumScreen
@@ -124,9 +136,17 @@ export default function MoMoPaymentScreen() {
             </Text>
           </View>
           {err ? <Text style={styles.error}>{err}</Text> : null}
-          {err ? (
+          {flow.isFailed ? (
             <GradientButton
-              label="Retry"
+              label="Start over"
+              variant="ghost"
+              onPress={retryPayment}
+              style={{ marginBottom: 8 }}
+            />
+          ) : null}
+          {err && !flow.isFailed ? (
+            <GradientButton
+              label="Retry approval"
               variant="ghost"
               onPress={simulateApprove}
               style={{ marginBottom: 8 }}

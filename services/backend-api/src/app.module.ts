@@ -27,6 +27,7 @@ import { MemberVerificationModule } from "./member-verification/member-verificat
 import { PaymentRequestsModule } from "./payment-requests/payment-requests.module";
 import { HealthModule } from "./health/health.module";
 import { WebhooksModule } from "./webhooks/webhooks.module";
+import { ReconciliationModule } from "./reconciliation/reconciliation.module";
 import { CorrelationMiddleware } from "./common/correlation/correlation.middleware";
 
 @Module({
@@ -61,6 +62,7 @@ import { CorrelationMiddleware } from "./common/correlation/correlation.middlewa
     PaymentRequestsModule,
     HealthModule,
     WebhooksModule,
+    ReconciliationModule,
   ],
 })
 export class AppModule implements NestModule {

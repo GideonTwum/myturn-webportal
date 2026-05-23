@@ -112,7 +112,10 @@ export default function OtpScreen() {
       }
       setSeconds(59);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not resend");
+      const msg = e instanceof Error ? e.message : "Could not resend";
+      const waitMatch = msg.match(/Wait (\d+)s/i);
+      if (waitMatch) setSeconds(Number(waitMatch[1]));
+      setError(msg);
     }
   }
 

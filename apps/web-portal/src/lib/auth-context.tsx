@@ -10,13 +10,9 @@ import {
 } from "react";
 import { UserRole } from "@myturn/shared";
 import { flushSync } from "react-dom";
-import {
-  apiFetch,
-  clearSession,
-  getStoredToken,
-  resolveAccessToken,
-  setSession,
-} from "./api";
+import { resolveAccessToken } from "@myturn/api-client";
+import { clearSession, getStoredToken, setSession } from "./api";
+import { getMyturnApi } from "./myturn-api";
 
 export type AuthUser = {
   id: string;
@@ -54,21 +50,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const login = useCallback(async (email: string, password: string) => {
-    const res = await apiFetch<{
-      access_token?: string;
-      accessToken?: string;
-      user: AuthUser;
-    }>("/auth/login", {
-      method: "POST",
-      body: JSON.stringify({ email, password }),
-    });
+    const res = await getMyturnApi().auth.login(email, password);
     const token = resolveAccessToken(res);
     if (!res.user) {
       throw new Error("Malformed login response: missing user.");
     }
+    const nextUser = res.user as AuthUser;
     flushSync(() => {
-      setSession(token, JSON.stringify(res.user));
-      setUser(res.user);
+      setSession(token, JSON.stringify(nextUser));
+      setUser(nextUser);
     });
   }, []);
 

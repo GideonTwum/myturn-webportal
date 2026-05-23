@@ -14,7 +14,12 @@ import { OtpRateLimiter } from "./otp/otp-rate-limiter";
 import type { OtpRecord, OtpStoreAdapter } from "./otp/otp-store.adapter";
 import { createOtpStore, type OtpStoreKind } from "./otp/otp-store.factory";
 import { createSmsProvider, type SmsProvider } from "./otp/sms-provider.interface";
-import { logOtpEvent } from "./otp/otp-telemetry";
+import {
+  logOtpEvent,
+  recordOtpDelivery,
+  recordOtpRequest,
+  recordOtpVerification,
+} from "./otp/otp-telemetry";
 
 const OTP_TTL_MS = Number(process.env.OTP_TTL_MS ?? 5 * 60 * 1000);
 const MAX_ATTEMPTS = Number(process.env.OTP_MAX_ATTEMPTS ?? 5);
@@ -65,7 +70,22 @@ export class OtpService {
       attempts: 0,
     };
     await this.store.set(digits, record);
-    const smsResult = await this.sms.sendOtp(digits, code);
+    recordOtpRequest();
+    let smsResult;
+    try {
+      smsResult = await this.sms.sendOtp(digits, code);
+      recordOtpDelivery(true);
+    } catch (e) {
+      await this.store.delete(digits);
+      recordOtpDelivery(false);
+      logOtpEvent(this.logger, "otp.request.failure", {
+        phone: digits,
+        reason: e instanceof Error ? e.message : "sms_failed",
+      });
+      throw new BadRequestException(
+        "Unable to send verification code. Please try again shortly.",
+      );
+    }
 
     logOtpEvent(this.logger, "otp.request", {
       phone: digits,
@@ -154,6 +174,7 @@ export class OtpService {
     }
 
     await this.store.delete(matchedKey);
+    recordOtpVerification();
     const digits = this.normalizePhone(phone);
     const user = await this.resolveOrCreateMemberByPhone(digits, phone.trim());
     logOtpEvent(this.logger, "otp.verify.success", {

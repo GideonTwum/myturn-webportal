@@ -25,7 +25,8 @@ export async function validateStagingEcosystem(prisma: PrismaService): Promise<v
   if (missing.length > 0) {
     logger.warn(
       `Staging seed incomplete (missing: ${missing.join(", ")}). ` +
-        `Run: npm run db:seed:local && npm run seed:staging:local`,
+        `Local: npm run db:seed:local && npm run seed:staging:local. ` +
+        `Railway: npm run db:seed && npm run seed:staging:railway (from laptop with .env.railway-public).`,
     );
   }
 

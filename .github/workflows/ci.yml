@@ -20,6 +20,9 @@ env:
   STAGING_API_URL: http://localhost:3001/api
   NEXT_PUBLIC_API_URL: http://localhost:3001/api
   NEXT_PUBLIC_DEPLOYMENT_TIER: local
+  SMS_PROVIDER: console
+  PAYMENT_PROVIDER: mock
+  ENABLE_RECONCILIATION_JOB: "true"
 
 jobs:
   ecosystem:
@@ -92,6 +95,10 @@ jobs:
         working-directory: services/backend-api
         run: npm run build
 
+      - name: Backend infrastructure tests
+        working-directory: services/backend-api
+        run: npm run test
+
       - name: Mobile typecheck
         working-directory: apps/mobile-app
         run: npm run typecheck
@@ -118,6 +125,9 @@ jobs:
 
       - name: E2E staging smoke tests
         run: npm run test:e2e-staging
+
+      - name: Playwright ecosystem tests
+        run: npm run test:e2e-playwright
 
       - name: Stop API
         if: always()

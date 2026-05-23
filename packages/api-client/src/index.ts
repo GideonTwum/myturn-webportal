@@ -7,6 +7,7 @@ export * from "./payments";
 export * from "./payouts";
 export * from "./notifications";
 export * from "./verification";
+export * from "./admin";
 
 import { createApiClient, type ApiClientConfig } from "./client";
 import { createAuthApi } from "./auth";
@@ -15,6 +16,7 @@ import { createPaymentsApi } from "./payments";
 import { createPayoutsApi } from "./payouts";
 import { createNotificationsApi } from "./notifications";
 import { createVerificationApi } from "./verification";
+import { createAdminApi } from "./admin";
 
 export function createMyturnApi(config: ApiClientConfig) {
   const client = createApiClient(config);
@@ -26,6 +28,7 @@ export function createMyturnApi(config: ApiClientConfig) {
     payouts: createPayoutsApi(client),
     notifications: createNotificationsApi(client),
     verification: createVerificationApi(client),
+    admin: createAdminApi(client),
   };
 }
 

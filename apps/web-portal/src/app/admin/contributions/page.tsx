@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { apiFetch } from "@/lib/api";
+import { getMyturnApi } from "@/lib/myturn-api";
 import { LIVE_POLL_MS, useSWR, useSWRConfig } from "@/lib/swr";
 import { DataTable } from "@/components/dashboard/DataTable";
 import { StatusBadge } from "@/components/dashboard/StatusBadge";
@@ -65,10 +65,7 @@ export default function AdminContributionsPage() {
   const unpaidSet = new Set(readiness?.unpaidMembers.map((u) => u.userId));
 
   async function recordPayment(contributionId: string) {
-    await apiFetch("/payments/mock/contribution-payment", {
-      method: "POST",
-      body: JSON.stringify({ contributionId }),
-    });
+    await getMyturnApi().admin.mockContributionPayment({ contributionId });
     void mutate(contribUrl);
     void mutate(readinessUrl);
     void mutate("/groups/mine");

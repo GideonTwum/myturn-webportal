@@ -7,7 +7,7 @@ import {
   SERVICE_MARGIN_PERCENTAGE,
 } from "@myturn/shared";
 import { Shield } from "lucide-react";
-import { apiFetch } from "@/lib/api";
+import { getMyturnApi } from "@/lib/myturn-api";
 import { cn } from "@/lib/cn";
 
 type SettingRow = { key: string; value: unknown };
@@ -25,8 +25,9 @@ export default function HqSettingsPage() {
   const [msg, setMsg] = useState<string | null>(null);
 
   function reload() {
-    apiFetch<SettingRow[]>("/settings")
-      .then(setRows)
+    getMyturnApi()
+      .admin.listSettings()
+      .then((rows) => setRows(rows as SettingRow[]))
       .catch((e) => setErr(e instanceof Error ? e.message : "Failed"));
   }
 
@@ -39,10 +40,7 @@ export default function HqSettingsPage() {
     setErr(null);
     setMsg(null);
     try {
-      await apiFetch("/settings", {
-        method: "PUT",
-        body: JSON.stringify({ key, value }),
-      });
+      await getMyturnApi().admin.updateSettings({ key, value });
       setMsg("Saved");
       reload();
     } catch (e2) {

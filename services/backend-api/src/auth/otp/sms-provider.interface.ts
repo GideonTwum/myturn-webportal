@@ -1,3 +1,5 @@
+import { ArkeselSmsProvider } from "./arkesel-sms.provider";
+
 export type SmsSendResult = {
   delivered: boolean;
   provider: string;
@@ -7,13 +9,19 @@ export type SmsSendResult = {
 export interface SmsProvider {
   readonly name: string;
   sendOtp(phoneDigits: string, code: string): Promise<SmsSendResult>;
+  getHealthState?(): "ok" | "error" | "unconfigured";
 }
 
 /** Local/staging — logs OTP (never use in production without explicit flag). */
 export class ConsoleSmsProvider implements SmsProvider {
   readonly name = "console";
+  private state: "ok" | "unconfigured" = "ok";
 
   constructor(private log: (msg: string) => void) {}
+
+  getHealthState() {
+    return this.state;
+  }
 
   async sendOtp(phoneDigits: string, code: string): Promise<SmsSendResult> {
     this.log(`[SMS:console] OTP to ${phoneDigits}: ${code}`);
@@ -21,25 +29,8 @@ export class ConsoleSmsProvider implements SmsProvider {
   }
 }
 
-/** Placeholder for Hubtel MoMo/SMS integration. */
-export class HubtelSmsProvider implements SmsProvider {
-  readonly name = "hubtel";
-  async sendOtp(): Promise<SmsSendResult> {
-    throw new Error("Hubtel SMS not configured. Set HUBTEL_* credentials.");
-  }
-}
-
-/** Placeholder for Arkesel SMS. */
-export class ArkeselSmsProvider implements SmsProvider {
-  readonly name = "arkesel";
-  async sendOtp(): Promise<SmsSendResult> {
-    throw new Error("Arkesel SMS not configured. Set ARKESEL_* credentials.");
-  }
-}
-
 export function createSmsProvider(log: (msg: string) => void): SmsProvider {
   const provider = process.env.SMS_PROVIDER?.trim().toLowerCase() ?? "console";
-  if (provider === "hubtel") return new HubtelSmsProvider();
   if (provider === "arkesel") return new ArkeselSmsProvider();
   return new ConsoleSmsProvider(log);
 }

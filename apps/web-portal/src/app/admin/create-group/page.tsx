@@ -10,7 +10,7 @@ import {
   PayoutMode,
   RECOMMENDED_SERVICE_MARGIN_BPS,
 } from "@myturn/shared";
-import { apiFetch } from "@/lib/api";
+import { getMyturnApi } from "@/lib/myturn-api";
 import { cn } from "@/lib/cn";
 import { GroupFinancePreviewCard } from "@/components/admin/GroupFinancePreviewCard";
 import { ServiceMarginSelector } from "@/components/admin/ServiceMarginSelector";
@@ -92,19 +92,16 @@ export default function CreateGroupPage() {
     }
     setPending(true);
     try {
-      await apiFetch("/groups", {
-        method: "POST",
-        body: JSON.stringify({
-          name,
-          description: description || undefined,
-          contributionAmount: contributionNum,
-          groupSize: groupSizeNum,
-          payoutMode,
-          daysPerCycle:
-            payoutMode === PayoutMode.CYCLE ? daysPerCycleNum : undefined,
-          startDate,
-          serviceMarginBps: previewResult.preview.serviceMarginBps,
-        }),
+      await getMyturnApi().admin.createGroup({
+        name,
+        description: description || undefined,
+        contributionAmount: contributionNum,
+        groupSize: groupSizeNum,
+        payoutMode,
+        daysPerCycle:
+          payoutMode === PayoutMode.CYCLE ? daysPerCycleNum : undefined,
+        startDate,
+        serviceMarginBps: previewResult.preview.serviceMarginBps,
       });
       router.push("/admin/groups");
     } catch (err) {

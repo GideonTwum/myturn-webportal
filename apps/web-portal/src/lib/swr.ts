@@ -1,5 +1,5 @@
-import { apiFetch } from "./api";
 import useSWR, { useSWRConfig } from "swr";
+import { getMyturnApi } from "./myturn-api";
 
 export { useSWR, useSWRConfig };
 
@@ -7,5 +7,5 @@ export { useSWR, useSWRConfig };
 export const LIVE_POLL_MS = 20_000;
 
 export async function swrFetcher<T>(url: string): Promise<T> {
-  return apiFetch<T>(url);
+  return getMyturnApi().client.get<T>(url, false);
 }

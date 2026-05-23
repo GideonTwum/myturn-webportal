@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { apiFetch } from "@/lib/api";
+import { getMyturnApi } from "@/lib/myturn-api";
 import { LIVE_POLL_MS, useSWR, useSWRConfig } from "@/lib/swr";
 import { ConfirmDialog } from "@/components/dashboard/ConfirmDialog";
 import { DataTable } from "@/components/dashboard/DataTable";
@@ -104,12 +104,9 @@ export default function AdminPayoutsPage() {
     setMsg(null);
     setErr(null);
     try {
-      await apiFetch("/payouts/mock/finalize-cycle", {
-        method: "POST",
-        body: JSON.stringify({
-          groupId: effectiveGroupId,
-          cycleNumber: readiness.currentCycle,
-        }),
+      await getMyturnApi().admin.mockFinalizeCycle({
+        groupId: effectiveGroupId,
+        cycleNumber: readiness.currentCycle,
       });
       setMsg(
         readiness.currentCycle >= readiness.totalCycles

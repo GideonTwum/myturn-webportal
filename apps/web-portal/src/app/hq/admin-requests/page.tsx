@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { apiFetch } from "@/lib/api";
+import { getMyturnApi } from "@/lib/myturn-api";
 import { LIVE_POLL_MS, useSWR, useSWRConfig } from "@/lib/swr";
 import { ConfirmDialog } from "@/components/dashboard/ConfirmDialog";
 import { DataTable } from "@/components/dashboard/DataTable";
@@ -31,10 +31,7 @@ export default function HqAdminRequestsPage() {
   async function review(id: string, decision: "APPROVED" | "REJECTED") {
     setActionErr(null);
     try {
-      await apiFetch(`/admin-requests/${id}`, {
-        method: "PATCH",
-        body: JSON.stringify({ decision }),
-      });
+      await getMyturnApi().admin.patchAdminRequest(id, { decision });
       void mutate(ADMIN_REQUESTS_KEY);
       void mutate("/hq/overview");
     } catch (e) {

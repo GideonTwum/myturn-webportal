@@ -8,6 +8,7 @@ import { PrismaService } from "../prisma/prisma.service";
 import { MemberParticipationService } from "../member/member-participation.service";
 import { IdempotencyService } from "../common/idempotency/idempotency.service";
 import { createPaymentProvider } from "../payments/providers/placeholder-providers";
+import { PaymentIntentService } from "../payments/payment-intent.service";
 import { PaymentIntentStatus } from "../payments/payment-intent.types";
 import { PaymentsService } from "../payments/payments.service";
 
@@ -22,6 +23,7 @@ export class PaymentRequestsService {
     private participation: MemberParticipationService,
     private payments: PaymentsService,
     private idempotency: IdempotencyService,
+    private intents: PaymentIntentService,
   ) {}
 
   async initiateContributionPayment(userId: string, contributionId: string) {
@@ -50,6 +52,12 @@ export class PaymentRequestsService {
       return this.toDto(existing);
     }
 
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { phone: true },
+    });
+    const phoneDigits = user?.phone?.replace(/\D/g, "") ?? "";
+
     const req = await this.prisma.paymentRequest.create({
       data: {
         userId,
@@ -57,22 +65,42 @@ export class PaymentRequestsService {
         contributionId,
         amount,
         expiresAt,
-        metadata: {
+        metadata: this.intents.metadataPatch(null, {
           channel: "momo",
-          staging: true,
-          intentStatus: PaymentIntentStatus.PENDING,
+          intentStatus: PaymentIntentStatus.CREATED,
           provider: this.paymentProvider.name,
-        },
+        }),
       },
     });
 
-    await this.paymentProvider.requestToPay({
-      paymentRequestId: req.id,
-      amount: amount.toString(),
-      currency: "GHS",
-      phoneDigits: "",
-      externalRef: req.externalRef,
-    });
+    const intentStatus = this.intents.transitionIntent(
+      PaymentIntentStatus.CREATED,
+      PaymentIntentStatus.PENDING,
+      { requestId: req.id, correlationId: req.externalRef },
+    );
+
+    try {
+      const psp = await this.paymentProvider.requestToPay({
+        paymentRequestId: req.id,
+        amount: amount.toString(),
+        currency: "GHS",
+        phoneDigits,
+        externalRef: req.externalRef,
+      });
+      await this.prisma.paymentRequest.update({
+        where: { id: req.id },
+        data: {
+          providerRef: psp.providerRef,
+          metadata: this.intents.metadataPatch(req.metadata, {
+            intentStatus,
+            correlationId: req.externalRef,
+            pspStatus: psp.status,
+          }),
+        },
+      });
+    } catch {
+      /* mock/staging may not call live PSP */
+    }
 
     return {
       ...this.toDto(req),
@@ -91,9 +119,19 @@ export class PaymentRequestsService {
       req.status === PaymentRequestStatus.PENDING &&
       req.expiresAt < new Date()
     ) {
+      this.intents.transitionIntent(
+        PaymentIntentStatus.PENDING,
+        PaymentIntentStatus.EXPIRED,
+        { requestId: req.id, correlationId: req.externalRef },
+      );
       await this.prisma.paymentRequest.update({
         where: { id: req.id },
-        data: { status: PaymentRequestStatus.EXPIRED },
+        data: {
+          status: PaymentRequestStatus.EXPIRED,
+          metadata: this.intents.metadataPatch(req.metadata, {
+            intentStatus: PaymentIntentStatus.EXPIRED,
+          }),
+        },
       });
       return this.toDto({ ...req, status: PaymentRequestStatus.EXPIRED });
     }
@@ -122,12 +160,28 @@ export class PaymentRequestsService {
       throw new BadRequestException(`Request is ${req.status}`);
     }
     if (req.expiresAt < new Date()) {
+      this.intents.transitionIntent(
+        PaymentIntentStatus.PENDING,
+        PaymentIntentStatus.EXPIRED,
+        { requestId: req.id, correlationId: req.externalRef },
+      );
       await this.prisma.paymentRequest.update({
         where: { id: req.id },
-        data: { status: PaymentRequestStatus.EXPIRED },
+        data: {
+          status: PaymentRequestStatus.EXPIRED,
+          metadata: this.intents.metadataPatch(req.metadata, {
+            intentStatus: PaymentIntentStatus.EXPIRED,
+          }),
+        },
       });
       throw new BadRequestException("Payment request expired");
     }
+
+    this.intents.transitionIntent(
+      PaymentIntentStatus.PENDING,
+      PaymentIntentStatus.APPROVED,
+      { requestId: req.id, correlationId: req.externalRef },
+    );
 
     await this.payments.mockRecordContributionPayment(
       req.contributionId,

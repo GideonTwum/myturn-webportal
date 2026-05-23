@@ -26,8 +26,11 @@
     "seed:members": "ts-node --project prisma/tsconfig.json prisma/seed-members.ts",
     "seed:staging": "ts-node --project prisma/tsconfig.json prisma/seed-staging.ts",
     "seed:staging:local": "node scripts/seed-staging-local.cjs",
+    "seed:staging:railway": "node scripts/seed-staging-railway.cjs",
     "db:wipe:local": "node scripts/wipe-local.cjs",
-    "typecheck": "tsc -p tsconfig.build.json --noEmit"
+    "typecheck": "tsc -p tsconfig.build.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "prisma": {
     "seed": "ts-node --project prisma/tsconfig.json prisma/seed.ts"
@@ -63,6 +66,7 @@
     "@types/passport-local": "^1.0.38",
     "prisma": "^6.1.0",
     "ts-node": "^10.9.2",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "vitest": "^3.0.5"
   }
 }
