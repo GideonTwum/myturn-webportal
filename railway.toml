@@ -1,6 +1,6 @@
 [build]
 builder = "NIXPACKS"
-buildCommand = "npm ci && npm run build:shared && npm run build -w backend-api"
+buildCommand = "npm run build:shared && npm run build -w backend-api"
 
 [deploy]
 startCommand = "node services/backend-api/dist/main.js"
