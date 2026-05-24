@@ -43,6 +43,21 @@ async function fetchJson(path) {
   return body;
 }
 
+async function fetchInvitePreview(code) {
+  const res = await fetch(`${BASE}/groups/invite/${code}`);
+  const text = await res.text();
+  let body;
+  try {
+    body = text ? JSON.parse(text) : null;
+  } catch {
+    body = text;
+  }
+  const rawMessage =
+    typeof body === "object" && body !== null && "message" in body ? body.message : text;
+  const message = Array.isArray(rawMessage) ? rawMessage.join(", ") : String(rawMessage);
+  return { ok: res.ok, status: res.status, body, message };
+}
+
 async function main() {
   console.log(`\nRailway staging verification @ ${BASE}\n`);
 
@@ -71,13 +86,23 @@ async function main() {
   if (health.checks?.database === "ok") ok("database connected");
   else fail("database", String(health.checks?.database));
 
-  const sms = health.infrastructure?.sms?.provider ?? "?";
+  const otpStore = health.infrastructure?.otpStore ?? "?";
+  const redisCheck = health.checks?.redis;
+  if (redisCheck === "ok" && otpStore === "redis") {
+    ok("Redis connected (OTP store: redis)");
+  } else if (redisCheck === "skipped" || otpStore === "memory") {
+    ok("Redis skipped — memory OTP fallback (attach Redis for testers)");
+  } else if (redisCheck === "error") {
+    fail("Redis", "configured but ping failed");
+  }
+
+  const sms = health.infrastructure?.sms?.provider ?? health.infrastructure?.smsProvider ?? "?";
   if (sms === "console") ok("SMS_PROVIDER=console");
   else fail("SMS provider", `expected console for default staging, got ${sms}`);
 
-  const pay = health.infrastructure?.payment?.provider ?? "?";
-  if (pay === "mock") ok("PAYMENT_PROVIDER=mock");
-  else fail("payment provider", `expected mock, got ${pay}`);
+  const pay = health.infrastructure?.payment?.provider ?? health.infrastructure?.paymentProvider ?? "?";
+  if (pay === "mock" || pay === "mock-momo") ok("PAYMENT_PROVIDER=mock or mock-momo");
+  else fail("payment provider", `expected mock or mock-momo, got ${pay}`);
 
   if (health.featureFlags?.mockPayments === true) ok("MOCK_PAYMENTS enabled");
   else fail("MOCK_PAYMENTS", "expected true in staging");
@@ -97,20 +122,31 @@ async function main() {
     );
   }
 
-  try {
-    const demo = await fetchJson("/groups/invite/STAGING-DEMO");
-    if (demo.inviteCode) ok("GET /groups/invite/STAGING-DEMO");
-    else fail("STAGING-DEMO", "missing inviteCode");
-  } catch (e) {
-    fail("STAGING-DEMO invite", e instanceof Error ? e.message : String(e));
+  const demo = await fetchInvitePreview("STAGING-DEMO");
+  if (demo.ok && demo.body?.inviteCode) {
+    ok("GET /groups/invite/STAGING-DEMO (joinable)");
+  } else {
+    fail(
+      "STAGING-DEMO invite",
+      demo.ok ? "missing inviteCode" : `${demo.status}: ${demo.message.slice(0, 120)}`,
+    );
   }
 
-  try {
-    const payGroup = await fetchJson("/groups/invite/STAGING-PAY");
-    if (payGroup.inviteCode) ok("GET /groups/invite/STAGING-PAY");
-    else fail("STAGING-PAY", "missing inviteCode");
-  } catch (e) {
-    fail("STAGING-PAY invite", e instanceof Error ? e.message : String(e));
+  const payInvite = await fetchInvitePreview("STAGING-PAY");
+  if (payInvite.ok && payInvite.body?.inviteCode) {
+    ok("GET /groups/invite/STAGING-PAY");
+  } else if (
+    payInvite.status === 400 &&
+    payInvite.message.includes("This group is no longer accepting members")
+  ) {
+    ok("GET /groups/invite/STAGING-PAY (active payment lab — closed to new joins)");
+  } else {
+    fail(
+      "STAGING-PAY invite",
+      payInvite.ok
+        ? "missing inviteCode"
+        : `${payInvite.status}: ${payInvite.message.slice(0, 120)}`,
+    );
   }
 
   const failed = checks.filter((c) => !c.pass);

@@ -112,6 +112,12 @@ export class HealthService {
     if (tier !== "production" && flags.allowOpenCors) {
       warnings.push("CORS_ORIGIN unset — any origin allowed (dev/staging only)");
     }
+    const redisUrl = process.env.REDIS_URL?.trim();
+    if (tier === "staging" && !redisUrl) {
+      warnings.push(
+        "REDIS_URL unset — OTP uses memory store (lost on redeploy). See docs/RAILWAY_REDIS.md",
+      );
+    }
     if (flags.mockPayments) {
       warnings.push("Mock MoMo payment flows are enabled");
     }

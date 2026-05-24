@@ -229,12 +229,14 @@ Secrets are **never** logged.
 
 ## 9. Optional Redis
 
+**Full guide:** [RAILWAY_REDIS.md](./RAILWAY_REDIS.md)
+
 1. Railway → **New** → **Redis**  
 2. API service → Variables → `REDIS_URL=${{ Redis.REDIS_URL }}`  
 3. Redeploy API  
 4. Health → `infrastructure.otpStore: "redis"`, `checks.redis: "ok"`
 
-Without Redis: memory fallback is allowed for staging; health shows `"memory"`.
+Without Redis: memory fallback is allowed for staging; health shows `"memory"` and a warning.
 
 ---
 
