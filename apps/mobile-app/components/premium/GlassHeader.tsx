@@ -6,6 +6,7 @@ import { PremiumIcon } from "@/components/icons/PremiumIcon";
 import { ScalePressable } from "./motion";
 import { tokens } from "@/constants/tokens";
 import { fonts } from "@/constants/typography";
+import { APP_BRAND } from "@/constants/app-brand";
 
 type Props = {
   title?: string;
@@ -19,7 +20,7 @@ type Props = {
 };
 
 export function GlassHeader({
-  title = "MyTurn",
+  title = APP_BRAND,
   showBack,
   right,
   brandOnly,
@@ -41,7 +42,7 @@ export function GlassHeader({
             <PremiumIcon icon={ChevronLeft} size="lg" color={tokens.colors.onSurface} />
           </ScalePressable>
         ) : null}
-        <Text style={styles.brand}>{brandOnly ? "MyTurn" : title}</Text>
+        <Text style={styles.brand}>{brandOnly ? APP_BRAND : title}</Text>
       </View>
       {right ??
         (closeAction ? (

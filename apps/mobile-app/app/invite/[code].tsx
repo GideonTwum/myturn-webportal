@@ -79,7 +79,6 @@ export default function InviteLandingScreen() {
     <PremiumScreen
       header={
         <GlassHeader
-          title="MyTurn"
           closeAction={() => router.replace("/(main)/home")}
         />
       }
@@ -172,7 +171,7 @@ export default function InviteLandingScreen() {
         <FeatureRow
           icon={TrendingUp}
           title="Community track record"
-          body={`${group.adminName}'s circle — verified on MyTurn staging.`}
+          body={`${group.adminName}'s circle — verified on MyTurn Susu staging.`}
         />
       </PremiumCard>
     </PremiumScreen>

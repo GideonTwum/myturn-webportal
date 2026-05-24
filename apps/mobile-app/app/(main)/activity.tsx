@@ -16,7 +16,7 @@ export default function ActivityScreen() {
     : notificationsToActivity(data?.notifications ?? []);
 
   return (
-    <PremiumScreen tabBar header={<GlassHeader title="MyTurn" />}>
+    <PremiumScreen tabBar header={<GlassHeader />}>
       <Text style={styles.h1}>Community Pulse</Text>
       <Text style={styles.sub}>See how your circles are growing together.</Text>
       <View style={styles.stats}>

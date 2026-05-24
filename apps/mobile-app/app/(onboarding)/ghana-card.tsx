@@ -50,7 +50,7 @@ export default function GhanaCardScreen() {
   }
 
   return (
-    <PremiumScreen header={<GlassHeader showBack title="MyTurn" />}>
+    <PremiumScreen header={<GlassHeader showBack />}>
       <ProgressTracker steps={steps} currentStep={currentStep} />
 
       <PremiumCard>

@@ -12,6 +12,7 @@ import { useDemoOptional } from "@/providers/DemoProvider";
 import { useAuth } from "@/providers/AuthProvider";
 import { tokens } from "@/constants/tokens";
 import { fonts } from "@/constants/typography";
+import { APP_BRAND, APP_DISPLAY_NAME } from "@/constants/app-brand";
 
 export default function PhoneScreen() {
   const router = useRouter();
@@ -52,7 +53,7 @@ export default function PhoneScreen() {
         <View style={styles.dot} />
       </View>
       <IconCircle icon={LockKeyhole} size={56} iconSize="xl" style={styles.iconWrap} />
-      <Text style={styles.h1}>Welcome to MyTurn</Text>
+      <Text style={styles.h1}>Welcome to {APP_DISPLAY_NAME}</Text>
       <Text style={styles.sub}>Join our premium savings community. Your growth journey starts here.</Text>
 
       <PremiumCard>
@@ -84,7 +85,7 @@ export default function PhoneScreen() {
         />
         {loading ? <ActivityIndicator style={{ marginTop: 12 }} color={tokens.colors.primary} /> : null}
       </PremiumCard>
-      <Text style={styles.footer}>Secure encryption powered by MyTurn Trust Layer</Text>
+      <Text style={styles.footer}>Secure encryption powered by {APP_BRAND}</Text>
     </PremiumScreen>
   );
 }

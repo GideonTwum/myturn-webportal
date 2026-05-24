@@ -31,7 +31,7 @@ export const tokens = {
     error: "#ba1a1a",
     errorContainer: "#ffdad6",
     onError: "#ffffff",
-    primaryFixed: "#85f8c4",
+    onErrorContainer: "#410002",
     primaryFixedDim: "#68dba9",
     secondaryFixed: "#ffe083",
     onSecondaryFixed: "#231b00",

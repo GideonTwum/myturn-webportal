@@ -1,0 +1,38 @@
+{
+  "cli": {
+    "version": ">= 13.0.0",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_API_URL": "http://localhost:3001/api",
+        "EXPO_PUBLIC_DEPLOYMENT_TIER": "local",
+        "EXPO_PUBLIC_MOCK_UI": "false"
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://myturn-webportal-production.up.railway.app/api",
+        "EXPO_PUBLIC_DEPLOYMENT_TIER": "staging",
+        "EXPO_PUBLIC_MOCK_UI": "false"
+      }
+    },
+    "production": {
+      "distribution": "store",
+      "env": {
+        "EXPO_PUBLIC_DEPLOYMENT_TIER": "production",
+        "EXPO_PUBLIC_MOCK_UI": "false"
+      }
+    }
+  },
+  "submit": {
+    "production": {}
+  }
+}

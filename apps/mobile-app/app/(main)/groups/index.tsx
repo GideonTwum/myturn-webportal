@@ -50,7 +50,7 @@ export default function GroupsScreen() {
       }));
 
   return (
-    <PremiumScreen tabBar header={<GlassHeader title="MyTurn" />}>
+    <PremiumScreen tabBar header={<GlassHeader />}>
       {isLoading && !IS_MOCK_UI ? (
         <ActivityIndicator color={tokens.colors.primary} style={{ marginTop: 24 }} />
       ) : null}

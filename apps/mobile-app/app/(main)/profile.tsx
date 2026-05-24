@@ -25,7 +25,7 @@ export default function ProfileScreen() {
         firstName: user?.firstName ?? "Member",
         lastName: user?.lastName ?? "",
         trustScore: trustQuery.data?.trust.trustScore ?? 0,
-        memberSince: "MyTurn member",
+        memberSince: "MyTurn Susu member",
       };
 
   const pct = Math.min(100, Math.round((displayUser.trustScore / 1000) * 100));
@@ -70,7 +70,7 @@ export default function ProfileScreen() {
       }));
 
   return (
-    <PremiumScreen tabBar header={<GlassHeader title="MyTurn" />}>
+    <PremiumScreen tabBar header={<GlassHeader />}>
       <PremiumCard>
         <View style={styles.hero}>
           <View style={styles.scoreRing}>

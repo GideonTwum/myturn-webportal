@@ -7,6 +7,7 @@ import {
   View,
 } from "react-native";
 import { colors, spacing } from "@/constants/theme";
+import { APP_BRAND } from "@/constants/app-brand";
 
 type Props = {
   title: string;
@@ -26,7 +27,7 @@ export function ScreenShell({ title, subtitle, children }: Props) {
           keyboardShouldPersistTaps="handled"
         >
           <View style={styles.header}>
-            <Text style={styles.brand}>MyTurn</Text>
+            <Text style={styles.brand}>{APP_BRAND}</Text>
             <Text style={styles.title}>{title}</Text>
             {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
           </View>

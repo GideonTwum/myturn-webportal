@@ -44,7 +44,9 @@ export function DemoBanner() {
       />
       <Text style={[styles.text, isProd ? styles.productionText : styles.stagingText]}>
         {TIER_LABEL[tier]}
-        {isProd ? " · live financial API" : " · MoMo simulated via backend"}
+        {isProd
+          ? " · live financial API"
+          : " · No real money · MoMo simulated"}
         {offline ? " · API offline" : health.isSuccess ? " · API ok" : ""}
       </Text>
       {offline && (

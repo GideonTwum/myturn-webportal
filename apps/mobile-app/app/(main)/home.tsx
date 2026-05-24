@@ -81,7 +81,6 @@ export default function HomeScreen() {
       tabBar
       header={
         <GlassHeader
-          title="MyTurn"
           right={
             <ScalePressable onPress={() => router.push("/notifications")} style={styles.bellBtn}>
               <PremiumIcon icon={Bell} size="lg" color={tokens.colors.onSurface} />

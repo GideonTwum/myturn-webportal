@@ -55,7 +55,7 @@ export default function SplashScreen() {
             <PremiumIcon icon={RefreshCw} size="hero" color={tokens.colors.onPrimary} />
           </View>
         </Animated.View>
-        <Text style={styles.title}>MyTurn</Text>
+        <Text style={styles.title}>MyTurn Susu</Text>
         <Text style={styles.tag}>Community savings, built on trust</Text>
       </FadeInView>
       <View style={styles.loader}>

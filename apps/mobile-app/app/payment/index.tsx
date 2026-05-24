@@ -6,6 +6,7 @@ import { GlassHeader, GradientButton, PremiumCard, PremiumScreen } from "@/compo
 import { IconCircle } from "@/components/icons/IconCircle";
 import { FadeInView } from "@/components/premium/motion";
 import { IS_MOCK_UI } from "@/constants/app-mode";
+import { StagingSafetyNotice } from "@/components/StagingSafetyNotice";
 import { formatGhs } from "@/lib/format-money";
 import { usePaymentFlow } from "@/hooks/usePaymentFlow";
 import { tokens } from "@/constants/tokens";
@@ -87,7 +88,6 @@ export default function MoMoPaymentScreen() {
       header={
         <GlassHeader
           showBack
-          title="MyTurn"
           onBack={() => {
             if (uiStep <= 1) {
               router.back();
@@ -101,6 +101,7 @@ export default function MoMoPaymentScreen() {
     >
       {uiStep === 1 ? (
         <PremiumCard>
+          <StagingSafetyNotice context="Tap Confirm to start a simulated MoMo flow — nothing leaves your wallet." />
           <IconCircle icon={CreditCard} size={64} iconSize="hero" style={styles.iconCenter} />
           <Text style={styles.h1}>Confirm Payment</Text>
           <Text style={styles.sub}>Contribute to {groupName}.</Text>
@@ -121,12 +122,13 @@ export default function MoMoPaymentScreen() {
 
       {uiStep === 2 ? (
         <PremiumCard>
+          <StagingSafetyNotice context="Use the staging simulate button below — do not expect a real MoMo prompt." />
           <View style={styles.momoLogo}>
             <Text style={styles.momoText}>MoMo</Text>
           </View>
           <Text style={styles.h1}>Check your phone</Text>
           <Text style={styles.sub}>
-            A payment prompt was sent to your MoMo number. Enter your PIN to authorize{" "}
+            Staging only: no real MoMo prompt. Use the simulate button below to complete{" "}
             {formatGhs(displayAmount)}.
           </Text>
           <View style={styles.waiting}>
