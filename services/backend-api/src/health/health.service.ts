@@ -1,6 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
-import { pingRedis } from "../auth/otp/otp-store.factory";
+import { pingRedis } from "../common/redis-connection.util";
 import { pingArkesel } from "../auth/otp/arkesel-sms.provider";
 import { getOtpMetrics } from "../auth/otp/otp-telemetry";
 import {

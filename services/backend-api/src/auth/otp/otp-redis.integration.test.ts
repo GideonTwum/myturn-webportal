@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import Redis from "ioredis";
 import { RedisOtpStoreAdapter } from "./redis-otp-store.adapter";
-import { pingRedis } from "./otp-store.factory";
+import { pingRedis } from "../../common/redis-connection.util";
 
 const REDIS_URL = process.env.REDIS_URL?.trim() ?? "redis://127.0.0.1:6379";
 
