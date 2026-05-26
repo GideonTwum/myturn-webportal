@@ -36,8 +36,8 @@ STAGING_API_URL=https://myturn-webportal-production.up.railway.app/api npm run t
 - [ ] `featureFlags.stagingRelaxTrust` = **`true`**  
 - [ ] `apiBaseUrl` = Railway URL (not `localhost`)  
 - [ ] `stagingSeed.status` = **`ok`**  
-- [ ] `GET /api/groups/invite/STAGING-DEMO` → 200 + inviteCode  
-- [ ] `GET /api/groups/invite/STAGING-PAY` → 200 + inviteCode  
+- [ ] `GET /api/groups/invite/STAGING-DEMO` → 200 + inviteCode (joinable)  
+- [ ] `GET /api/groups/invite/STAGING-PAY` → 200 **or** 400 *“no longer accepting members”* (active payment lab)  
 
 ### Redis (recommended on staging)
 
@@ -59,7 +59,8 @@ STAGING_API_URL=https://myturn-webportal-production.up.railway.app/api npm run t
 - [ ] `EXPO_PUBLIC_MOCK_UI` = **`false`**  
 - [ ] Top banner: **STAGING · No real money**  
 - [ ] OTP for `0240000001` works  
-- [ ] Join `STAGING-PAY`  
+- [ ] Join **`STAGING-DEMO`** (onboarding)  
+- [ ] Payment test on seeded **`STAGING-PAY`** account (`0240000001`) — not via new join  
 - [ ] Mock MoMo payment completes  
 - [ ] Admin sees contribution update (~20s poll)  
 
@@ -91,3 +92,5 @@ curl -s https://myturn-webportal-production.up.railway.app/api/health | jq .
 - [RAILWAY_STAGING_SETUP.md](./RAILWAY_STAGING_SETUP.md)  
 - [RAILWAY_REDIS.md](./RAILWAY_REDIS.md)  
 - [TESTER_RUNBOOK.md](./TESTER_RUNBOOK.md)  
+- [TESTER_ROLLOUT_CHECKLIST.md](./TESTER_ROLLOUT_CHECKLIST.md)  
+- [REAL_DEVICE_SMOKE_TEST.md](./REAL_DEVICE_SMOKE_TEST.md)

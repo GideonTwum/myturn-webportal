@@ -1,5 +1,6 @@
 import { Logger } from "@nestjs/common";
 import Redis from "ioredis";
+import { normalizeRedisUrl } from "../../common/redis-connection.util";
 import { InMemoryOtpStoreAdapter, type OtpStoreAdapter } from "./otp-store.adapter";
 import { createRedisClient, RedisOtpStoreAdapter } from "./redis-otp-store.adapter";
 
@@ -17,14 +18,22 @@ export function createOtpStore(): { store: OtpStoreAdapter; kind: OtpStoreKind }
   return { store: new InMemoryOtpStoreAdapter(), kind: "memory" };
 }
 
-export async function pingRedis(url: string): Promise<boolean> {
-  const client = new Redis(url, { maxRetriesPerRequest: 1, connectTimeout: 2000 });
+export async function pingRedis(
+  url: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const client = new Redis(normalizeRedisUrl(url), {
+    maxRetriesPerRequest: 1,
+    connectTimeout: 10_000,
+  });
   try {
     await client.connect();
     const pong = await client.ping();
-    return pong === "PONG";
-  } catch {
-    return false;
+    return { ok: pong === "PONG" };
+  } catch (e) {
+    return {
+      ok: false,
+      error: e instanceof Error ? e.message : String(e),
+    };
   } finally {
     client.disconnect();
   }

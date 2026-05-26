@@ -76,6 +76,11 @@ export function logDeploymentDiagnostics(logger: Logger): void {
     if (smsProviderName() === "console") {
       logger.warn("Staging: SMS_PROVIDER=console — OTP logged, not sent via SMS");
     }
+    if (!redisConfigured) {
+      logger.warn(
+        "Staging: REDIS_URL unset — OTP/idempotency use memory (lost on redeploy). See docs/RAILWAY_REDIS.md",
+      );
+    }
     if (paymentProviderName() === "mock" || !process.env.PAYMENT_PROVIDER?.trim()) {
       logger.warn("Staging: PAYMENT_PROVIDER=mock — use mock-approve for MoMo");
     }

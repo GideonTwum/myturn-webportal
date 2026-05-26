@@ -10,7 +10,8 @@ describe("Redis OTP store", () => {
   let reachable = false;
 
   beforeAll(async () => {
-    reachable = await pingRedis(REDIS_URL);
+    const ping = await pingRedis(REDIS_URL);
+    reachable = ping.ok;
     if (reachable) {
       redis = new Redis(REDIS_URL, { maxRetriesPerRequest: 1, lazyConnect: true });
       await redis.connect();

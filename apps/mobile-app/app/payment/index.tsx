@@ -172,6 +172,9 @@ export default function MoMoPaymentScreen() {
             <IconCircle icon={CheckCircle2} size={72} iconSize="display" color={tokens.colors.primary} />
             <Text style={styles.h1}>Payment Confirmed</Text>
             <Text style={styles.sub}>Successfully contributed to {groupName}</Text>
+            <Text style={styles.stagingNote}>
+              Staging simulation — no MoMo wallet charge.
+            </Text>
             <View style={styles.receiptLines}>
               <Text style={styles.line}>
                 Reference · {flow.paymentRequest?.externalRef ?? "—"}
@@ -203,6 +206,13 @@ const styles = StyleSheet.create({
     textAlign: "center",
     color: tokens.colors.onSurfaceVariant,
     marginVertical: 12,
+  },
+  stagingNote: {
+    fontFamily: fonts.label,
+    fontSize: 12,
+    textAlign: "center",
+    color: tokens.colors.error,
+    marginBottom: 8,
   },
   amountBox: {
     backgroundColor: tokens.colors.surfaceContainerLow,

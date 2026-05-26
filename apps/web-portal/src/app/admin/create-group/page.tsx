@@ -68,7 +68,7 @@ export default function CreateGroupPage() {
     contributionAmount,
     groupSize,
     daysPerCycle,
-    payoutMode,
+    payoutMode,  
     startDate,
     serviceMarginBps,
     contributionNum,

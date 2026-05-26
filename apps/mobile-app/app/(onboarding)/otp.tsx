@@ -132,6 +132,11 @@ export default function OtpScreen() {
         {stagingCode && !IS_MOCK_UI ? (
           <Text style={styles.staging}>Staging code: {stagingCode}</Text>
         ) : null}
+        {!IS_MOCK_UI ? (
+          <Text style={styles.stagingHint}>
+            Staging: SMS not sent yet — use the code above if shown. Wait before resending.
+          </Text>
+        ) : null}
         <Pressable onPress={resend}>
           <Text style={styles.resend}>
             {seconds > 0 ? `Resend code in 0:${String(seconds).padStart(2, "0")}` : "Resend New Code"}
@@ -183,6 +188,14 @@ const styles = StyleSheet.create({
     fontFamily: fonts.label,
     fontSize: 14,
     color: tokens.colors.tertiary,
+  },
+  stagingHint: {
+    textAlign: "center",
+    marginTop: 8,
+    fontFamily: fonts.body,
+    fontSize: 12,
+    color: tokens.colors.onSurfaceVariant,
+    lineHeight: 17,
   },
   resend: {
     textAlign: "center",

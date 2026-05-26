@@ -27,8 +27,11 @@ export class HealthService {
     };
 
     const redisUrl = process.env.REDIS_URL?.trim();
+    let redisPingError: string | undefined;
     if (redisUrl) {
-      checks.redis = (await pingRedis(redisUrl)) ? "ok" : "error";
+      const ping = await pingRedis(redisUrl);
+      checks.redis = ping.ok ? "ok" : "error";
+      redisPingError = ping.error;
     }
 
     try {
@@ -75,7 +78,7 @@ export class HealthService {
         debugOtpInResponses: flags.debugOtpInResponses,
         memberPhoneLogin: flags.memberPhoneLogin,
       },
-      warnings: this.collectWarnings(tier, flags, stagingSeed),
+      warnings: this.collectWarnings(tier, flags, stagingSeed, checks.redis),
       infrastructure: {
         otpStore: redisUrl ? "redis" : "memory",
         otpMetrics: getOtpMetrics(),
@@ -98,7 +101,14 @@ export class HealthService {
           health: reconciliationEnabled ? "ok" : "disabled",
         },
         idempotency: redisUrl ? "redis" : "memory",
-        redis: checks.redis,
+        redis: {
+          configured: Boolean(redisUrl),
+          check: checks.redis,
+          otpStore: redisUrl ? "redis" : "memory",
+          idempotency: redisUrl ? "redis" : "memory",
+          rolloutReady: Boolean(redisUrl && checks.redis === "ok"),
+          ...(redisPingError ? { lastPingError: redisPingError } : {}),
+        },
       },
     };
   }
@@ -107,12 +117,18 @@ export class HealthService {
     tier: string,
     flags: ReturnType<typeof getPlatformFeatureFlags>,
     stagingSeed: Awaited<ReturnType<HealthService["checkStagingSeed"]>>,
+    redisCheck: "ok" | "error" | "skipped",
   ): string[] {
     const warnings: string[] = [];
+    const redisUrl = process.env.REDIS_URL?.trim();
     if (tier !== "production" && flags.allowOpenCors) {
       warnings.push("CORS_ORIGIN unset — any origin allowed (dev/staging only)");
     }
-    const redisUrl = process.env.REDIS_URL?.trim();
+    if (redisUrl && redisCheck === "error") {
+      warnings.push(
+        "REDIS_URL is set but Redis ping failed — use private redis://…railway.internal URL with ?family=0 (see docs/RAILWAY_REDIS.md)",
+      );
+    }
     if (tier === "staging" && !redisUrl) {
       warnings.push(
         "REDIS_URL unset — OTP uses memory store (lost on redeploy). See docs/RAILWAY_REDIS.md",

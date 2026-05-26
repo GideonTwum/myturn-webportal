@@ -1,4 +1,5 @@
 import Redis from "ioredis";
+import { normalizeRedisUrl } from "../../common/redis-connection.util";
 import type { OtpRecord, OtpStoreAdapter } from "./otp-store.adapter";
 
 const KEY_PREFIX = "myturn:otp:";
@@ -40,5 +41,9 @@ export class RedisOtpStoreAdapter implements OtpStoreAdapter {
 }
 
 export function createRedisClient(url: string): Redis {
-  return new Redis(url, { maxRetriesPerRequest: 2, lazyConnect: true });
+  return new Redis(normalizeRedisUrl(url), {
+    maxRetriesPerRequest: 2,
+    lazyConnect: true,
+    connectTimeout: 10_000,
+  });
 }
