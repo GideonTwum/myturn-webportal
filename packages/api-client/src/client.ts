@@ -132,6 +132,9 @@ export function createApiClient(config: ApiClientConfig) {
         { unwrapEnvelope: unwrap },
       );
     },
+    delete<T>(path: string, unwrap = path.startsWith("/member")) {
+      return request<T>(path, { method: "DELETE" }, { unwrapEnvelope: unwrap });
+    },
   };
 }
 

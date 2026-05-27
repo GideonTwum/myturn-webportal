@@ -117,7 +117,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: tokens.colors.primaryFixed + "44",
+    backgroundColor: tokens.colors.primaryFixedDim + "44",
     alignItems: "center",
     justifyContent: "center",
   },

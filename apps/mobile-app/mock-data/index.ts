@@ -49,6 +49,7 @@ export type ActivityItem = {
   amount?: string;
   memberName?: string;
   highlight?: boolean;
+  raw?: import("@myturn/api-client").NotificationRow;
 };
 
 export type NotificationItem = {
@@ -58,6 +59,7 @@ export type NotificationItem = {
   body: string;
   time: string;
   actionLabel?: string;
+  raw?: import("@myturn/api-client").NotificationRow;
 };
 
 export const mockUser: MockUser = {

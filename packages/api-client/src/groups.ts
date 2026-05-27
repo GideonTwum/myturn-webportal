@@ -1,6 +1,7 @@
 import type { ApiClient } from "./client";
 import type {
   MemberGroupDetail,
+  MemberGroupMembersResponse,
   MemberGroupsResponse,
 } from "./types";
 
@@ -11,6 +12,12 @@ export function createGroupsApi(client: ApiClient) {
     },
     get(groupId: string) {
       return client.get<MemberGroupDetail>(`/member/groups/${groupId}`, true);
+    },
+    listMembers(groupId: string) {
+      return client.get<MemberGroupMembersResponse>(
+        `/member/groups/${groupId}/members`,
+        true,
+      );
     },
     invitePreview(inviteCode: string) {
       return client.get<Record<string, unknown>>(

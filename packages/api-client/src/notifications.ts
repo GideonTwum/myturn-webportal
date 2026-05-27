@@ -10,7 +10,23 @@ export function createNotificationsApi(client: ApiClient) {
       );
     },
     markRead(id: string) {
-      return client.patch<unknown>(`/notifications/${id}/read`, undefined, false);
+      return client.patch<{ ok: boolean }>(
+        `/member/notifications/${id}/read`,
+        undefined,
+        true,
+      );
+    },
+    delete(id: string) {
+      return client.delete<{ ok: boolean }>(
+        `/member/notifications/${id}`,
+        true,
+      );
+    },
+    clearAll() {
+      return client.delete<{ deleted: number }>(
+        "/member/notifications/clear-all",
+        true,
+      );
     },
     registerDevice(body: {
       token: string;

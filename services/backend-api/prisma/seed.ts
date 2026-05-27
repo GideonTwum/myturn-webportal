@@ -25,6 +25,7 @@ type SeedUser = {
   phone?: string;
 };
 
+/** HQ + admin only — members and groups are created via the app, not seed. */
 const SEED_USERS: SeedUser[] = [
   {
     email: "hq@myturn.local",
@@ -37,41 +38,6 @@ const SEED_USERS: SeedUser[] = [
     role: UserRole.ADMIN,
     firstName: "Group",
     lastName: "Admin",
-  },
-  {
-    email: "member@myturn.local",
-    role: UserRole.USER,
-    firstName: "Member",
-    lastName: "One",
-    phone: "0240000001",
-  },
-  {
-    email: "member2@myturn.local",
-    role: UserRole.USER,
-    firstName: "Member",
-    lastName: "Two",
-    phone: "0240000002",
-  },
-  {
-    email: "member3@myturn.local",
-    role: UserRole.USER,
-    firstName: "Member",
-    lastName: "Three",
-    phone: "0240000003",
-  },
-  {
-    email: "member4@myturn.local",
-    role: UserRole.USER,
-    firstName: "Member",
-    lastName: "Four",
-    phone: "0240000004",
-  },
-  {
-    email: "member5@myturn.local",
-    role: UserRole.USER,
-    firstName: "Member",
-    lastName: "Five",
-    phone: "0240000005",
   },
 ];
 
@@ -134,16 +100,12 @@ async function main() {
     counts[result] += 1;
   }
 
-  const byRole = {
-    SUPER_ADMIN: SEED_USERS.filter((u) => u.role === UserRole.SUPER_ADMIN).length,
-    ADMIN: SEED_USERS.filter((u) => u.role === UserRole.ADMIN).length,
-    USER: SEED_USERS.filter((u) => u.role === UserRole.USER).length,
-  };
-
   console.log("[seed] --- summary ---");
   console.log(
-    `[seed] defined: ${SEED_USERS.length} users (${byRole.SUPER_ADMIN} HQ, ${byRole.ADMIN} admin, ${byRole.USER} members)`,
+    `[seed] defined: ${SEED_USERS.length} users (1 HQ, 1 admin) — no members or groups`,
   );
+  console.log("[seed] HQ:    hq@myturn.local");
+  console.log("[seed] Admin: admin@myturn.local");
   console.log(
     `[seed] result: ${counts.created} created, ${counts.skipped} skipped, ${counts.reactivated} reactivated`,
   );

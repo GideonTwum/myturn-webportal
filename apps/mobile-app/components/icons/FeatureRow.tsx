@@ -30,7 +30,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 10,
-    backgroundColor: tokens.colors.primaryFixed + "33",
+    backgroundColor: tokens.colors.primaryFixedDim + "33",
     alignItems: "center",
     justifyContent: "center",
   },

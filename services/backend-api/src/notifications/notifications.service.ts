@@ -27,9 +27,21 @@ export class NotificationsService {
   }
 
   async markRead(userId: string, id: string) {
-    return this.prisma.notification.updateMany({
+    const result = await this.prisma.notification.updateMany({
       where: { id, userId },
       data: { read: true },
     });
+    return result.count > 0;
+  }
+
+  async deleteForUser(userId: string, id: string) {
+    const result = await this.prisma.notification.deleteMany({
+      where: { id, userId },
+    });
+    return result.count > 0;
+  }
+
+  clearAllForUser(userId: string) {
+    return this.prisma.notification.deleteMany({ where: { userId } });
   }
 }

@@ -1,9 +1,17 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from "react-native";
-import { CheckCircle2, ShieldCheck } from "lucide-react-native";
+import { useMemo, useState } from "react";
+import {
+  ActivityIndicator,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+import { CheckCircle2, PartyPopper, ShieldCheck, Users } from "lucide-react-native";
 import {
   GlassHeader,
   GradientButton,
+  GhanaCardGateModal,
   HealthScoreRing,
   PremiumCard,
   PremiumScreen,
@@ -12,16 +20,34 @@ import { FeatureRow } from "@/components/icons/FeatureRow";
 import { PremiumIcon } from "@/components/icons/PremiumIcon";
 import { IS_MOCK_UI } from "@/constants/app-mode";
 import { formatGhs, healthScoreFromProgress } from "@/lib/format-money";
-import { useMemberGroup } from "@/hooks/useMemberQueries";
+import { ghanaCardStatusLabel, needsGhanaCardForContribute } from "@/lib/ghana-card-status";
+import {
+  useMemberGroup,
+  useMemberGroupMembers,
+  useTrustProfile,
+} from "@/hooks/useMemberQueries";
 import { mockMarketGroup, mockMembers } from "@/mock-data";
 import { tokens } from "@/constants/tokens";
 import { fonts } from "@/constants/typography";
 
 export default function GroupDetailScreen() {
   const router = useRouter();
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, celebrate } = useLocalSearchParams<{ id: string; celebrate?: string }>();
   const groupId = String(id ?? "");
+  const showCelebrate = celebrate === "1";
+  const [ghanaGateOpen, setGhanaGateOpen] = useState(false);
+
   const { data: apiGroup, isLoading, isError } = useMemberGroup(groupId, !IS_MOCK_UI);
+  const membersQuery = useMemberGroupMembers(groupId, !IS_MOCK_UI);
+  const trustQuery = useTrustProfile(!IS_MOCK_UI);
+
+  const ghanaStatus = ghanaCardStatusLabel(
+    trustQuery.data?.ghanaCardVerificationStatus ?? null,
+  );
+  const mustVerifyGhana = needsGhanaCardForContribute(
+    trustQuery.data?.ghanaCardVerificationStatus,
+    trustQuery.data?.unlocks.ghanaCardVerified,
+  );
 
   const group = IS_MOCK_UI
     ? mockMarketGroup
@@ -41,12 +67,24 @@ export default function GroupDetailScreen() {
         }
       : null;
 
+  const latestPayoutNotif = useMemo(() => {
+    if (!showCelebrate || IS_MOCK_UI) return null;
+    return {
+      title: "It's Your Turn!!",
+      body: `Congratulations on your payout from ${apiGroup?.groupName ?? "your group"}.`,
+    };
+  }, [showCelebrate, apiGroup?.groupName]);
+
   function openPayment() {
     if (!group || IS_MOCK_UI) {
       router.push("/payment");
       return;
     }
     if (!apiGroup?.contributionId) return;
+    if (mustVerifyGhana) {
+      setGhanaGateOpen(true);
+      return;
+    }
     router.push({
       pathname: "/payment",
       params: {
@@ -74,6 +112,8 @@ export default function GroupDetailScreen() {
   }
 
   const g = group!;
+  const roster = IS_MOCK_UI ? mockMembers : (membersQuery.data?.members ?? []);
+  const summary = membersQuery.data?.summary;
 
   return (
     <PremiumScreen
@@ -84,7 +124,9 @@ export default function GroupDetailScreen() {
             label={
               !IS_MOCK_UI && apiGroup?.contributionStatus === "PAID"
                 ? "Contribution up to date"
-                : "Contribute via MoMo"
+                : mustVerifyGhana && !IS_MOCK_UI
+                  ? "Verify Ghana Card to contribute"
+                  : "Contribute via MoMo"
             }
             onPress={openPayment}
             disabled={
@@ -95,11 +137,23 @@ export default function GroupDetailScreen() {
           <Text style={styles.secure}>
             {IS_MOCK_UI
               ? "UI demo"
-              : "Staging · mock MoMo recorded on backend"}
+              : `Ghana Card · ${ghanaStatus} · Staging mock MoMo`}
           </Text>
         </View>
       }
     >
+      {latestPayoutNotif ? (
+        <PremiumCard style={styles.celebrate} animate={false}>
+          <View style={styles.celebrateRow}>
+            <PremiumIcon icon={PartyPopper} size="lg" color={tokens.colors.onTertiaryContainer} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.celebrateTitle}>{latestPayoutNotif.title}</Text>
+              <Text style={styles.celebrateBody}>{latestPayoutNotif.body}</Text>
+            </View>
+          </View>
+        </PremiumCard>
+      ) : null}
+
       <PremiumCard style={{ padding: 0, overflow: "hidden" }}>
         <View style={styles.hero}>
           <View style={styles.chipRow}>
@@ -123,48 +177,82 @@ export default function GroupDetailScreen() {
         </View>
       </PremiumCard>
 
-      {IS_MOCK_UI ? (
-        <>
-          <Text style={styles.section}>Member Activity</Text>
-          {mockMembers.map((m) => (
-            <PremiumCard key={m.id} variant="flat" style={styles.member} animate={false}>
-              <View style={styles.memberRow}>
-                <View style={styles.memberAvatar}>
-                  <Text style={styles.memberInitial}>{m.initials ?? m.name[0]}</Text>
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.memberName}>{m.name}</Text>
-                  <Text style={styles.memberDetail}>{m.detail}</Text>
-                </View>
-                <View
+      {!IS_MOCK_UI && summary ? (
+        <View style={styles.summaryRow}>
+          <PremiumCard variant="flat" style={styles.summaryCard} animate={false}>
+            <Text style={styles.summaryValue}>{summary.paid}</Text>
+            <Text style={styles.summaryLabel}>Paid</Text>
+          </PremiumCard>
+          <PremiumCard variant="flat" style={styles.summaryCard} animate={false}>
+            <Text style={styles.summaryValue}>{summary.pending}</Text>
+            <Text style={styles.summaryLabel}>Pending</Text>
+          </PremiumCard>
+          <PremiumCard variant="flat" style={styles.summaryCard} animate={false}>
+            <Text style={styles.summaryValue}>{summary.total}</Text>
+            <Text style={styles.summaryLabel}>Members</Text>
+          </PremiumCard>
+        </View>
+      ) : null}
+
+      <View style={styles.sectionHead}>
+        <PremiumIcon icon={Users} size="sm" color={tokens.colors.onSurface} />
+        <Text style={styles.section}>Contribution status</Text>
+      </View>
+      {membersQuery.isLoading && !IS_MOCK_UI ? (
+        <ActivityIndicator color={tokens.colors.primary} />
+      ) : null}
+      {(IS_MOCK_UI ? mockMembers : roster).map((m) => {
+        const name = "name" in m ? m.name : m.displayName;
+        const status = "status" in m ? m.status : m.paymentStatus.toLowerCase();
+        const paid = status === "paid" || status === "PAID";
+        const overdue = status === "overdue" || status === "OVERDUE";
+        return (
+          <PremiumCard key={"id" in m ? m.id : m.userId} variant="flat" style={styles.member} animate={false}>
+            <View style={styles.memberRow}>
+              <View style={styles.memberAvatar}>
+                <Text style={styles.memberInitial}>{name[0]?.toUpperCase() ?? "?"}</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.memberName}>
+                  {name}
+                  {"isYou" in m && m.isYou ? " (You)" : ""}
+                </Text>
+                <Text style={styles.memberDetail}>
+                  {IS_MOCK_UI ? ("detail" in m ? m.detail : "") : `Cycle ${membersQuery.data?.currentCycle ?? "—"}`}
+                </Text>
+              </View>
+              <View
+                style={[
+                  styles.status,
+                  paid ? styles.statusPaid : overdue ? styles.statusOverdue : styles.statusPending,
+                ]}
+              >
+                <Text
                   style={[
-                    styles.status,
-                    m.status === "paid" ? styles.statusPaid : styles.statusPending,
+                    styles.statusText,
+                    paid
+                      ? styles.statusTextPaid
+                      : overdue
+                        ? styles.statusTextOverdue
+                        : styles.statusTextPending,
                   ]}
                 >
-                  <Text
-                    style={[
-                      styles.statusText,
-                      m.status === "paid" ? styles.statusTextPaid : styles.statusTextPending,
-                    ]}
-                  >
-                    {m.status === "paid" ? "Paid" : "Pending"}
-                  </Text>
-                </View>
+                  {paid ? "Paid" : overdue ? "Overdue" : "Pending"}
+                </Text>
               </View>
-            </PremiumCard>
-          ))}
-        </>
-      ) : (
-        <ScrollView>
-          <Text style={styles.section}>Your standing</Text>
-          <PremiumCard variant="flat">
-            <Text style={styles.standing}>Cycle standing · {apiGroup?.cycleStanding}</Text>
-            <Text style={styles.standing}>Status · {apiGroup?.contributionStatus ?? "—"}</Text>
-            <Text style={styles.standing}>Group status · {apiGroup?.groupStatus}</Text>
+            </View>
           </PremiumCard>
-        </ScrollView>
-      )}
+        );
+      })}
+
+      <ScrollView>
+        <Text style={styles.section}>Your standing</Text>
+        <PremiumCard variant="flat">
+          <Text style={styles.standing}>Cycle standing · {apiGroup?.cycleStanding ?? "—"}</Text>
+          <Text style={styles.standing}>Status · {apiGroup?.contributionStatus ?? "—"}</Text>
+          <Text style={styles.standing}>Group status · {apiGroup?.groupStatus}</Text>
+        </PremiumCard>
+      </ScrollView>
 
       <PremiumCard variant="flat">
         <FeatureRow
@@ -173,6 +261,16 @@ export default function GroupDetailScreen() {
           body="Contributions are tracked by the MyTurn ledger — backend is the source of truth."
         />
       </PremiumCard>
+
+      <GhanaCardGateModal
+        visible={ghanaGateOpen}
+        statusLabel={ghanaStatus}
+        onClose={() => setGhanaGateOpen(false)}
+        onVerify={() => {
+          setGhanaGateOpen(false);
+          router.push("/(onboarding)/ghana-card");
+        }}
+      />
     </PremiumScreen>
   );
 }
@@ -192,6 +290,23 @@ const styles = StyleSheet.create({
     marginTop: 8,
     letterSpacing: 1,
     textTransform: "uppercase",
+  },
+  celebrate: {
+    marginBottom: 12,
+    backgroundColor: tokens.colors.tertiaryContainer,
+    borderColor: tokens.colors.tertiary,
+  },
+  celebrateRow: { flexDirection: "row", gap: 12, alignItems: "center" },
+  celebrateTitle: {
+    fontFamily: fonts.display,
+    fontSize: 20,
+    color: tokens.colors.onTertiaryContainer,
+  },
+  celebrateBody: {
+    fontFamily: fonts.body,
+    fontSize: 14,
+    color: tokens.colors.onTertiaryContainer,
+    marginTop: 4,
   },
   hero: {
     backgroundColor: tokens.colors.primaryContainer,
@@ -215,12 +330,21 @@ const styles = StyleSheet.create({
     marginTop: 6,
     textAlign: "center",
   },
+  summaryRow: { flexDirection: "row", gap: 8, marginTop: 12 },
+  summaryCard: { flex: 1, alignItems: "center", paddingVertical: 12 },
+  summaryValue: { fontFamily: fonts.display, fontSize: 22, color: tokens.colors.primary },
+  summaryLabel: { fontFamily: fonts.bodyMedium, fontSize: 11, color: tokens.colors.onSurfaceVariant },
+  sectionHead: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 20,
+    marginBottom: 10,
+  },
   section: {
     fontFamily: fonts.display,
     fontSize: 18,
     color: tokens.colors.onSurface,
-    marginTop: 20,
-    marginBottom: 10,
   },
   standing: { fontFamily: fonts.body, fontSize: 14, color: tokens.colors.onSurfaceVariant, marginBottom: 6 },
   member: { marginBottom: 8 },
@@ -237,9 +361,11 @@ const styles = StyleSheet.create({
   memberName: { fontFamily: fonts.label, fontSize: 15, color: tokens.colors.onSurface },
   memberDetail: { fontFamily: fonts.bodyMedium, fontSize: 12, color: tokens.colors.onSurfaceVariant },
   status: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: tokens.radius.pill },
-  statusPaid: { backgroundColor: tokens.colors.primaryFixed + "33" },
+  statusPaid: { backgroundColor: tokens.colors.primaryFixedDim + "33" },
   statusPending: { backgroundColor: tokens.colors.surfaceContainer },
+  statusOverdue: { backgroundColor: tokens.colors.errorContainer },
   statusText: { fontFamily: fonts.label, fontSize: 12 },
   statusTextPaid: { color: tokens.colors.primary },
   statusTextPending: { color: tokens.colors.onSurfaceVariant },
+  statusTextOverdue: { color: tokens.colors.error },
 });

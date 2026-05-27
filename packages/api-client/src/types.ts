@@ -111,13 +111,64 @@ export type MemberPaymentsResponse = {
   payments: MemberPaymentRow[];
 };
 
+export type NotificationMetadata = {
+  groupId?: string;
+  contributionId?: string;
+  payoutId?: string;
+  requestId?: string;
+  amount?: string;
+  cycleNumber?: number;
+  groupCompleted?: boolean;
+};
+
 export type NotificationRow = {
   id: string;
   type: string;
   title: string;
   body: string;
   read: boolean;
+  metadata?: NotificationMetadata | null;
   createdAt: string;
+};
+
+export type MemberMeResponse = MemberMe & {
+  payoutsReceivedCount: number;
+  payoutsReceivedTotal: string;
+};
+
+export type MemberGroupMemberRow = {
+  userId: string;
+  displayName: string;
+  turnOrder: number;
+  paymentStatus: "PAID" | "PENDING" | "OVERDUE";
+  isYou: boolean;
+};
+
+export type MemberGroupMembersResponse = {
+  groupId: string;
+  groupName: string;
+  currentCycle: number;
+  summary: { total: number; paid: number; pending: number };
+  members: MemberGroupMemberRow[];
+};
+
+export type AdminPaymentRow = {
+  id: string;
+  reference: string;
+  memberName: string | null;
+  memberId: string | null;
+  groupId: string | null;
+  groupName: string | null;
+  amount: string;
+  status: string;
+  type: string;
+  provider: string;
+  createdAt: string;
+  settledAt: string | null;
+};
+
+export type AdminPaymentsResponse = {
+  payments: AdminPaymentRow[];
 };
 
 export type MemberNotificationsResponse = {

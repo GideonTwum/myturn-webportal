@@ -36,7 +36,7 @@ const styles = StyleSheet.create({
   },
   chip: { paddingHorizontal: 10, paddingVertical: 4 },
   icon: { marginRight: 2 },
-  ok: { backgroundColor: tokens.colors.primaryFixed + "33" },
+  ok: { backgroundColor: tokens.colors.primaryFixedDim + "33" },
   pending: { backgroundColor: tokens.colors.secondaryFixed + "66" },
   text: { fontFamily: fonts.label, fontSize: 12 },
   textOk: { color: tokens.colors.primary },

@@ -260,18 +260,19 @@ export class PayoutsService {
       `[MOCK] cycle finalized groupId=${groupId} cycle=${cycleNumber} payoutId=${payout.id} recipientId=${payout.recipientId} amount=${payoutAmountNum.toFixed(2)} groupCompleted=${groupCompleted}`,
     );
 
-    await this.notifications.create(
-      payout.recipientId,
-      "Payout received",
-      `You received a payout of ${payoutAmountNum.toFixed(2)} from group (cycle ${cycleNumber}).`,
-      "PAYOUT",
-      { payoutId: payout.id, groupId },
-    );
-
     const groupRow = await this.prisma.group.findUnique({
       where: { id: groupId },
       select: { adminId: true, name: true },
     });
+    const groupName = groupRow?.name ?? "your group";
+
+    await this.notifications.create(
+      payout.recipientId,
+      "It's Your Turn!!",
+      `Congratulations! You've received GHS ${payoutAmountNum.toFixed(2)} from ${groupName}.`,
+      "PAYOUT",
+      { payoutId: payout.id, groupId, amount: payoutAmountNum.toFixed(2) },
+    );
     if (groupRow) {
       await this.notifications.create(
         groupRow.adminId,

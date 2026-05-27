@@ -1,12 +1,30 @@
 import { useRouter } from "expo-router";
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
-import { Rocket } from "lucide-react-native";
-import { GlassHeader, GradientButton, PremiumCard, PremiumScreen } from "@/components/premium";
+import {
+  ActivityIndicator,
+  Alert,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+import { Rocket, X } from "lucide-react-native";
+import { PremiumIcon } from "@/components/icons/PremiumIcon";
+import {
+  GlassHeader,
+  GradientButton,
+  PremiumCard,
+  PremiumScreen,
+} from "@/components/premium";
 import { IconCircle } from "@/components/icons/IconCircle";
 import { notificationIconMap } from "@/components/icons/maps";
 import { IS_MOCK_UI } from "@/constants/app-mode";
+import {
+  useClearAllNotifications,
+  useDeleteNotification,
+  useMemberNotifications,
+} from "@/hooks/useMemberQueries";
 import { notificationsToFeed } from "@/lib/activity-mapper";
-import { useMemberNotifications } from "@/hooks/useMemberQueries";
+import { resolveNotificationRoute } from "@/lib/notification-routes";
 import { mockNotifications } from "@/mock-data";
 import { tokens } from "@/constants/tokens";
 import { fonts } from "@/constants/typography";
@@ -14,12 +32,50 @@ import { fonts } from "@/constants/typography";
 export default function NotificationsScreen() {
   const router = useRouter();
   const { data, isLoading } = useMemberNotifications(!IS_MOCK_UI);
+  const deleteOne = useDeleteNotification();
+  const clearAll = useClearAllNotifications();
   const items = IS_MOCK_UI
     ? mockNotifications
     : notificationsToFeed(data?.notifications ?? []);
 
+  function confirmClearAll() {
+    Alert.alert("Clear all notifications?", "This cannot be undone.", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Clear all",
+        style: "destructive",
+        onPress: () => void clearAll.mutateAsync(),
+      },
+    ]);
+  }
+
+  function onView(item: (typeof items)[number]) {
+    if (IS_MOCK_UI || !item.raw) {
+      router.push("/(main)/groups");
+      return;
+    }
+    const route = resolveNotificationRoute(item.raw);
+    if (route.pathname === "/notifications") return;
+    router.push(route as never);
+  }
+
   return (
-    <PremiumScreen header={<GlassHeader showBack title="Notifications" onBack={() => router.back()} />}>
+    <PremiumScreen
+      header={
+        <GlassHeader
+          showBack
+          title="Notifications"
+          onBack={() => router.back()}
+          right={
+            !IS_MOCK_UI && items.length > 0 ? (
+              <Pressable onPress={confirmClearAll} style={styles.clearAll}>
+                <Text style={styles.clearAllText}>Clear all</Text>
+              </Pressable>
+            ) : null
+          }
+        />
+      }
+    >
       <Text style={styles.sub}>Stay updated with your circle movements and payout schedules.</Text>
       {isLoading && !IS_MOCK_UI ? (
         <ActivityIndicator color={tokens.colors.primary} style={{ marginBottom: 16 }} />
@@ -36,11 +92,22 @@ export default function NotificationsScreen() {
               <View style={{ flex: 1 }}>
                 <View style={styles.top}>
                   <Text style={styles.title}>{n.title}</Text>
-                  <Text style={styles.time}>{n.time}</Text>
+                  <View style={styles.topActions}>
+                    <Text style={styles.time}>{n.time}</Text>
+                    {!IS_MOCK_UI ? (
+                      <Pressable
+                        hitSlop={8}
+                        onPress={() => void deleteOne.mutateAsync(n.id)}
+                        disabled={deleteOne.isPending}
+                      >
+                        <PremiumIcon icon={X} size="xs" color={tokens.colors.onSurfaceVariant} />
+                      </Pressable>
+                    ) : null}
+                  </View>
                 </View>
                 <Text style={styles.body}>{n.body}</Text>
                 {n.actionLabel ? (
-                  <Pressable style={styles.action} onPress={() => router.push("/(main)/groups")}>
+                  <Pressable style={styles.action} onPress={() => onView(n)}>
                     <Text style={styles.actionText}>{n.actionLabel}</Text>
                   </Pressable>
                 ) : null}
@@ -74,9 +141,12 @@ export default function NotificationsScreen() {
 const styles = StyleSheet.create({
   sub: { fontFamily: fonts.body, fontSize: 15, color: tokens.colors.onSurfaceVariant, marginBottom: 16 },
   empty: { fontFamily: fonts.body, fontSize: 14, color: tokens.colors.onSurfaceVariant, marginBottom: 16 },
+  clearAll: { paddingHorizontal: 8, paddingVertical: 4 },
+  clearAllText: { fontFamily: fonts.label, fontSize: 12, color: tokens.colors.primary },
   card: { marginBottom: 12 },
   row: { flexDirection: "row", gap: 12 },
   top: { flexDirection: "row", justifyContent: "space-between", gap: 8 },
+  topActions: { flexDirection: "row", alignItems: "center", gap: 6 },
   title: { fontFamily: fonts.label, fontSize: 14, color: tokens.colors.onSurface, flex: 1 },
   time: { fontFamily: fonts.bodyMedium, fontSize: 11, color: tokens.colors.onSurfaceVariant },
   body: {

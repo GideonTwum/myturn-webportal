@@ -50,4 +50,44 @@ export class AdminOverviewService {
       totalPaidToMembersGhs: decStr(payoutAgg._sum.amount),
     };
   }
+
+  /** Payments for groups owned by this admin only. */
+  async listPayments(adminId: string) {
+    const rows = await this.prisma.payment.findMany({
+      where: { group: { adminId } },
+      orderBy: { createdAt: "desc" },
+      take: 200,
+      include: {
+        user: { select: { id: true, firstName: true, lastName: true, email: true } },
+        group: { select: { id: true, name: true } },
+      },
+    });
+
+    return {
+      payments: rows.map((p) => {
+        const meta =
+          p.metadata && typeof p.metadata === "object" && !Array.isArray(p.metadata)
+            ? (p.metadata as Record<string, unknown>)
+            : {};
+        const memberName = p.user
+          ? [p.user.firstName, p.user.lastName].filter(Boolean).join(" ").trim() ||
+            p.user.email
+          : null;
+        return {
+          id: p.id,
+          reference: p.externalRef ?? p.id,
+          memberName,
+          memberId: p.userId,
+          groupId: p.groupId,
+          groupName: p.group?.name ?? null,
+          amount: p.amount.toString(),
+          status: p.status,
+          type: p.type,
+          provider: typeof meta.provider === "string" ? meta.provider : "MOCK",
+          createdAt: p.createdAt.toISOString(),
+          settledAt: p.completedAt?.toISOString() ?? null,
+        };
+      }),
+    };
+  }
 }

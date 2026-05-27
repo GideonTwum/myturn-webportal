@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
 import { useEffect } from "react";
 import { UserRole } from "@myturn/shared";
 import { getStoredToken } from "@/lib/api";
@@ -14,15 +13,13 @@ export default function MemberLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const pathname = usePathname();
-  const isSignIn = pathname === "/member/sign-in";
   const { user, ready, logout } = useAuth();
 
   useEffect(() => {
-    if (isSignIn || !ready) return;
+    if (!ready) return;
     const token = getStoredToken();
     if (!token || !user) {
-      window.location.href = "/member/sign-in";
+      window.location.href = "/login";
       return;
     }
     if (user.role !== UserRole.USER) {
@@ -34,27 +31,7 @@ export default function MemberLayout({
         window.location.href = "/login";
       }
     }
-  }, [ready, user, isSignIn]);
-
-  if (isSignIn) {
-    return (
-      <div className="min-h-screen bg-surface-muted">
-        <EnvironmentBanner />
-        <div className="border-b border-gray-200 bg-white px-4 py-3">
-          <div className="mx-auto flex max-w-lg items-center justify-between">
-            <span className="font-bold text-brand-green">MyTurn member</span>
-            <Link
-              href="/join"
-              className="text-sm font-medium text-gray-600 hover:text-gray-900"
-            >
-              Join a group
-            </Link>
-          </div>
-        </div>
-        <main className="mx-auto max-w-lg px-4 py-8">{children}</main>
-      </div>
-    );
-  }
+  }, [ready, user]);
 
   if (!ready || !user || user.role !== UserRole.USER) {
     return (
@@ -92,7 +69,7 @@ export default function MemberLayout({
               type="button"
               onClick={() => {
                 logout();
-                window.location.href = "/member/sign-in";
+                window.location.href = "/login";
               }}
               className="font-medium text-gray-600 hover:text-gray-900"
             >

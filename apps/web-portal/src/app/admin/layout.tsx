@@ -19,7 +19,7 @@ export default function AdminLayout({
       return;
     }
     if (user.role === UserRole.USER) {
-      window.location.href = "/member";
+      window.location.href = "/login";
       return;
     }
     if (user.role === UserRole.SUPER_ADMIN) {

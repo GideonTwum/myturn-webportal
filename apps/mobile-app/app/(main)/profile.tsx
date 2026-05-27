@@ -1,11 +1,13 @@
 import { ScrollView, StyleSheet, Text, View } from "react-native";
-import { Award, Lock } from "lucide-react-native";
+import { Award, Lock, Wallet } from "lucide-react-native";
 import { GlassHeader, GradientButton, PremiumCard, PremiumScreen, TrustBadge } from "@/components/premium";
 import { IconCircle } from "@/components/icons/IconCircle";
 import { PremiumIcon } from "@/components/icons/PremiumIcon";
 import { profileStatIcons } from "@/components/icons/maps";
 import { IS_MOCK_UI } from "@/constants/app-mode";
-import { useMemberGroups, useMemberPayouts, useTrustProfile } from "@/hooks/useMemberQueries";
+import { formatGhs } from "@/lib/format-money";
+import { ghanaCardStatusLabel } from "@/lib/ghana-card-status";
+import { useMemberGroups, useMemberMe, useMemberPayouts, useTrustProfile } from "@/hooks/useMemberQueries";
 import { mockBadges, mockPayoutHistory } from "@/mock-data";
 import { useDemoOptional } from "@/providers/DemoProvider";
 import { useAuth } from "@/providers/AuthProvider";
@@ -15,6 +17,7 @@ import { fonts } from "@/constants/typography";
 export default function ProfileScreen() {
   const demo = useDemoOptional();
   const { user, signOut, token } = useAuth();
+  const meQuery = useMemberMe(Boolean(token) && !IS_MOCK_UI);
   const trustQuery = useTrustProfile(Boolean(token) && !IS_MOCK_UI);
   const groupsQuery = useMemberGroups(Boolean(token) && !IS_MOCK_UI);
   const payoutsQuery = useMemberPayouts(Boolean(token) && !IS_MOCK_UI);
@@ -22,11 +25,20 @@ export default function ProfileScreen() {
   const displayUser = IS_MOCK_UI && demo
     ? demo.user
     : {
-        firstName: user?.firstName ?? "Member",
-        lastName: user?.lastName ?? "",
+        firstName: user?.firstName ?? meQuery.data?.firstName ?? "Member",
+        lastName: user?.lastName ?? meQuery.data?.lastName ?? "",
         trustScore: trustQuery.data?.trust.trustScore ?? 0,
         memberSince: "MyTurn Susu member",
       };
+
+  const payoutCount = IS_MOCK_UI
+    ? 2
+    : Number(meQuery.data?.payoutsReceivedCount ?? 0);
+  const payoutTotal = IS_MOCK_UI
+    ? "4200.00"
+    : String(meQuery.data?.payoutsReceivedTotal ?? "0");
+
+  const ghanaLabel = ghanaCardStatusLabel(trustQuery.data?.ghanaCardVerificationStatus);
 
   const pct = Math.min(100, Math.round((displayUser.trustScore / 1000) * 100));
   const statRows = IS_MOCK_UI
@@ -46,11 +58,6 @@ export default function ProfileScreen() {
           key: "groups" as const,
           v: String(groupsQuery.data?.memberships.length ?? 0),
           l: "Active groups",
-        },
-        {
-          key: "paidOut" as const,
-          v: String(payoutsQuery.data?.payouts.filter((p) => p.status === "PAID").length ?? 0),
-          l: "Payouts received",
         },
         {
           key: "onTime" as const,
@@ -82,14 +89,26 @@ export default function ProfileScreen() {
               {displayUser.firstName} {displayUser.lastName}
             </Text>
             <TrustBadge
-              label={trustQuery.data?.unlocks.ghanaCardVerified ? "Verified Status" : "Pending verification"}
-              verified={Boolean(trustQuery.data?.unlocks.ghanaCardVerified) || IS_MOCK_UI}
+              label={ghanaLabel}
+              verified={trustQuery.data?.ghanaCardVerificationStatus === "VERIFIED" || IS_MOCK_UI}
             />
             <Text style={styles.since}>{displayUser.memberSince}</Text>
           </View>
         </View>
         <View style={styles.scoreTrack}>
           <View style={[styles.scoreFill, { width: `${pct}%` }]} />
+        </View>
+      </PremiumCard>
+
+      <PremiumCard style={styles.payoutStat} animate={false}>
+        <View style={styles.payoutStatRow}>
+          <IconCircle icon={Wallet} iconSize="lg" color={tokens.colors.primary} />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.payoutStatTitle}>Payouts Received</Text>
+            <Text style={styles.payoutStatMeta}>
+              {payoutCount} payout{payoutCount === 1 ? "" : "s"} · {formatGhs(payoutTotal)} total
+            </Text>
+          </View>
         </View>
       </PremiumCard>
 
@@ -108,7 +127,7 @@ export default function ProfileScreen() {
         <PremiumCard key={p.id} variant="flat" style={styles.history} animate={false}>
           <View style={styles.historyRow}>
             <Text style={styles.historyGroup}>{p.group}</Text>
-            <Text style={styles.historyAmt}>{p.amount}</Text>
+            <Text style={styles.historyAmt}>{formatGhs(p.amount)}</Text>
           </View>
           <Text style={styles.historyMeta}>
             {p.date}
@@ -161,6 +180,16 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   scoreFill: { height: "100%", backgroundColor: tokens.colors.primary },
+  payoutStat: { marginTop: 12, backgroundColor: tokens.colors.primaryContainer },
+  payoutStatRow: { flexDirection: "row", gap: 12, alignItems: "center" },
+  payoutStatTitle: { fontFamily: fonts.display, fontSize: 18, color: tokens.colors.onPrimaryContainer },
+  payoutStatMeta: {
+    fontFamily: fonts.body,
+    fontSize: 14,
+    color: tokens.colors.onPrimaryContainer,
+    opacity: 0.9,
+    marginTop: 4,
+  },
   grid: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginTop: 16 },
   gridCell: { width: "48%", gap: 6 },
   gridValue: { fontFamily: fonts.display, fontSize: 20, color: tokens.colors.onSurface },

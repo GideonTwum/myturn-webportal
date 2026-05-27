@@ -3,7 +3,8 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
-import { GroupMemberStatus, UserRole } from "@prisma/client";
+import { GroupMemberStatus, PayoutStatus, UserRole } from "@prisma/client";
+import { NotificationsService } from "../notifications/notifications.service";
 import { GroupsService } from "../groups/groups.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { DeviceTokensService } from "./device-tokens.service";
@@ -14,6 +15,7 @@ export class MemberService {
     private prisma: PrismaService,
     private groups: GroupsService,
     private deviceTokens: DeviceTokensService,
+    private notifications: NotificationsService,
   ) {}
 
   async getMe(userId: string) {
@@ -34,7 +36,18 @@ export class MemberService {
     if (!user || user.role !== UserRole.USER) {
       throw new ForbiddenException("Member access only");
     }
-    return user;
+
+    const payoutAgg = await this.prisma.payout.aggregate({
+      where: { recipientId: userId, status: PayoutStatus.COMPLETED },
+      _sum: { amount: true },
+      _count: { id: true },
+    });
+
+    return {
+      ...user,
+      payoutsReceivedCount: payoutAgg._count.id,
+      payoutsReceivedTotal: payoutAgg._sum.amount?.toString() ?? "0",
+    };
   }
 
   async listGroups(userId: string) {
@@ -143,19 +156,7 @@ export class MemberService {
 
   async listNotifications(userId: string) {
     await this.assertMember(userId);
-    const rows = await this.prisma.notification.findMany({
-      where: { userId },
-      orderBy: { createdAt: "desc" },
-      take: 100,
-      select: {
-        id: true,
-        type: true,
-        title: true,
-        body: true,
-        read: true,
-        createdAt: true,
-      },
-    });
+    const rows = await this.notifications.listForUser(userId);
     return {
       notifications: rows.map((n) => ({
         id: n.id,
@@ -163,9 +164,35 @@ export class MemberService {
         title: n.title,
         body: n.body,
         read: n.read,
+        metadata: n.metadata ?? null,
         createdAt: n.createdAt.toISOString(),
       })),
     };
+  }
+
+  async markNotificationRead(userId: string, id: string) {
+    await this.assertMember(userId);
+    const ok = await this.notifications.markRead(userId, id);
+    if (!ok) throw new NotFoundException("Notification not found");
+    return { ok: true };
+  }
+
+  async deleteNotification(userId: string, id: string) {
+    await this.assertMember(userId);
+    const ok = await this.notifications.deleteForUser(userId, id);
+    if (!ok) throw new NotFoundException("Notification not found");
+    return { ok: true };
+  }
+
+  async clearAllNotifications(userId: string) {
+    await this.assertMember(userId);
+    const result = await this.notifications.clearAllForUser(userId);
+    return { deleted: result.count };
+  }
+
+  async getGroupMembers(userId: string, groupId: string) {
+    await this.assertMember(userId);
+    return this.groups.getMemberSafeGroupRoster(groupId, userId);
   }
 
   registerDevice(

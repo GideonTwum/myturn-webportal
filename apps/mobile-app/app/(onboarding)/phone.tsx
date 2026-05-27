@@ -18,7 +18,7 @@ export default function PhoneScreen() {
   const router = useRouter();
   const demo = useDemoOptional();
   const { requestOtp } = useAuth();
-  const [phone, setPhone] = useState("0242105441");
+  const [phone, setPhone] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [debugCode, setDebugCode] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -67,7 +67,7 @@ export default function PhoneScreen() {
             keyboardType="phone-pad"
             value={phone}
             onChangeText={setPhone}
-            placeholder="00 000 0000"
+            placeholder="024 000 0000"
             placeholderTextColor={tokens.colors.outline + "88"}
             editable={!loading}
           />

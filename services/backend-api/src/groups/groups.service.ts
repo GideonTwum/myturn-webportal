@@ -10,11 +10,9 @@ import {
   ContributionFrequency,
   ContributionStatus,
   DepositStatus,
-  GhanaCardVerificationStatus,
   GroupMemberStatus,
   GroupScheduleUnit,
   GroupStatus,
-  MemberAuthorizationLevel,
   MemberCycleStanding,
   PayoutMode,
   Prisma,
@@ -29,7 +27,6 @@ import {
   summarizeCycle,
 } from "@myturn/shared";
 import { memberCyclePaymentDays } from "../common/member-cycle-payment-days";
-import { isStagingRelaxTrust } from "../common/staging-trust";
 import { CycleComplianceService } from "../cycle-risk/cycle-compliance.service";
 import { CycleDepositsService } from "../cycle-risk/cycle-deposits.service";
 import { PrismaService } from "../prisma/prisma.service";
@@ -422,6 +419,85 @@ export class GroupsService {
     };
   }
 
+  /** Member-safe roster: names + current-cycle payment status only (no phones/emails). */
+  async getMemberSafeGroupRoster(groupId: string, memberUserId: string) {
+    const membership = await this.prisma.groupMember.findFirst({
+      where: {
+        groupId,
+        userId: memberUserId,
+        status: GroupMemberStatus.ACTIVE,
+      },
+    });
+    if (!membership) {
+      throw new NotFoundException("Group not found");
+    }
+
+    await this.cycleCompliance.syncGroupCompliance(groupId);
+
+    const group = await this.prisma.group.findUnique({
+      where: { id: groupId },
+      select: {
+        id: true,
+        name: true,
+        currentCycle: true,
+        memberSlots: true,
+      },
+    });
+    if (!group) {
+      throw new NotFoundException("Group not found");
+    }
+
+    const members = await this.prisma.groupMember.findMany({
+      where: { groupId, status: GroupMemberStatus.ACTIVE },
+      include: {
+        user: { select: { id: true, firstName: true, lastName: true } },
+      },
+      orderBy: { turnOrder: "asc" },
+    });
+
+    const contributions = await this.prisma.contribution.findMany({
+      where: { groupId, cycleNumber: group.currentCycle },
+    });
+    const byUser = new Map(contributions.map((c) => [c.userId, c]));
+
+    const roster = members.map((m) => {
+      const c = byUser.get(m.userId);
+      let paymentStatus: "PAID" | "PENDING" | "OVERDUE" = "PENDING";
+      if (c?.status === ContributionStatus.PAID) {
+        paymentStatus = "PAID";
+      } else if (c?.status === ContributionStatus.LATE) {
+        paymentStatus = "OVERDUE";
+      }
+
+      const name = [m.user.firstName, m.user.lastName]
+        .filter(Boolean)
+        .join(" ")
+        .trim();
+
+      return {
+        userId: m.userId,
+        displayName: name || "Member",
+        turnOrder: m.turnOrder,
+        paymentStatus,
+        isYou: m.userId === memberUserId,
+      };
+    });
+
+    const paid = roster.filter((r) => r.paymentStatus === "PAID").length;
+
+    return {
+      groupId: group.id,
+      groupName: group.name,
+      currentCycle: group.currentCycle,
+      summary: {
+        total: roster.length,
+        paid,
+        pending: roster.length - paid,
+      },
+      members: roster,
+    };
+  }
+
   private normalizeInviteCode(raw: string): string {
     return raw.trim().toUpperCase().replace(/\s+/g, "");
   }
@@ -617,18 +693,14 @@ export class GroupsService {
       );
     }
 
-    if (!isStagingRelaxTrust()) {
-      if (
-        user.memberAuthorizationLevel !== MemberAuthorizationLevel.VERIFIED_MEMBER ||
-        user.ghanaCardVerificationStatus !== GhanaCardVerificationStatus.VERIFIED
-      ) {
-        throw new ForbiddenException({
-          message:
-            "Verify your Ghana Card to join this group and unlock participation.",
-          code: "GHANA_CARD_REQUIRED",
-        });
-      }
-    }
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        firstName,
+        lastName: lastName || "",
+        phone: input.phone.trim(),
+      },
+    });
 
     const already = group.members.some((m) => m.userId === user.id);
     if (already) {

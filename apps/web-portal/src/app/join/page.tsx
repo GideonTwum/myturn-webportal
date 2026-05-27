@@ -239,11 +239,7 @@ export default function JoinGroupPage() {
         </div>
       )}
 
-      <p className="mt-8 flex flex-col items-center gap-2 text-center text-sm text-gray-500 sm:flex-row sm:justify-center">
-        <Link href="/member/sign-in" className="font-medium text-brand-green hover:underline">
-          Member sign-in
-        </Link>
-        <span className="hidden sm:inline">·</span>
+      <p className="mt-8 text-center text-sm text-gray-500">
         <Link href="/login" className="font-medium text-brand-green hover:underline">
           Admin / HQ login
         </Link>

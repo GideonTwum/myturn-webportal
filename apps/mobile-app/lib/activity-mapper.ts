@@ -1,4 +1,5 @@
 import type { NotificationRow } from "@myturn/api-client";
+import { shouldShowViewAction } from "@/lib/notification-routes";
 import type { ActivityItem, NotificationItem } from "@/mock-data";
 
 function formatRelativeTime(iso: string): string {
@@ -38,7 +39,10 @@ export function notificationsToActivity(notifications: NotificationRow[]): Activ
     title: n.title,
     body: n.body,
     time: formatRelativeTime(n.createdAt),
-    highlight: !n.read && n.type.toUpperCase().includes("PAYOUT"),
+    highlight:
+      n.type.toUpperCase().includes("PAYOUT") ||
+      n.title.includes("Your Turn"),
+    raw: n,
   }));
 }
 
@@ -49,6 +53,7 @@ export function notificationsToFeed(notifications: NotificationRow[]): Notificat
     title: n.title,
     body: n.body,
     time: formatRelativeTime(n.createdAt),
-    actionLabel: n.type.toUpperCase().includes("CONTRIBUTION") ? "View" : undefined,
+    actionLabel: shouldShowViewAction(n) ? "View" : undefined,
+    raw: n,
   }));
 }

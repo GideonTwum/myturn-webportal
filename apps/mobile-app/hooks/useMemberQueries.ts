@@ -10,6 +10,7 @@ export const memberKeys = {
   me: ["member", "me"] as const,
   groups: ["member", "groups"] as const,
   group: (id: string) => ["member", "group", id] as const,
+  groupMembers: (id: string) => ["member", "group-members", id] as const,
   payouts: ["member", "payouts"] as const,
   payments: ["member", "payments"] as const,
   notifications: ["member", "notifications"] as const,
@@ -62,6 +63,16 @@ export function useMemberGroup(groupId: string, enabled = true) {
   });
 }
 
+export function useMemberGroupMembers(groupId: string, enabled = true) {
+  return useQuery({
+    queryKey: memberKeys.groupMembers(groupId),
+    queryFn: () => api.groups.listMembers(groupId),
+    enabled: enabled && !IS_MOCK_UI && Boolean(groupId),
+    refetchInterval: POLL_NORMAL_MS,
+    ...queryDefaults,
+  });
+}
+
 export function useMemberPayouts(enabled = true) {
   return useQuery({
     queryKey: memberKeys.payouts,
@@ -89,6 +100,26 @@ export function useMemberNotifications(enabled = true) {
     enabled: enabled && !IS_MOCK_UI,
     refetchInterval: POLL_NORMAL_MS,
     ...queryDefaults,
+  });
+}
+
+export function useDeleteNotification() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.notifications.delete(id),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: memberKeys.notifications });
+    },
+  });
+}
+
+export function useClearAllNotifications() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.notifications.clearAll(),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: memberKeys.notifications });
+    },
   });
 }
 

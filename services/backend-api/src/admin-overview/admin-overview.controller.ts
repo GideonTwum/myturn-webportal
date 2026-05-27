@@ -17,4 +17,9 @@ export class AdminOverviewController {
   getOverview(@Req() req: ReqUser) {
     return this.overview.getOverview(req.user.sub);
   }
+
+  @Get("payments")
+  listPayments(@Req() req: ReqUser) {
+    return this.overview.listPayments(req.user.sub);
+  }
 }

@@ -87,7 +87,7 @@ async function wipe() {
     throw new Error("[wipe:staging:railway] Wipe incomplete.");
   }
   console.log(
-    "[wipe:staging:railway] Repopulate: npm run db:seed && npm run seed:staging:railway",
+    "[wipe:staging:railway] Repopulate: npm run db:seed (HQ + admin only)",
   );
 }
 

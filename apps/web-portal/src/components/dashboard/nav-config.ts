@@ -38,6 +38,12 @@ export const adminNavItems: NavItem[] = [
     icon: CreditCard,
     section: "Admin",
   },
+  {
+    href: "/admin/payments",
+    label: "Payments",
+    icon: PieChart,
+    section: "Admin",
+  },
   { href: "/admin/payouts", label: "Payouts", icon: Wallet, section: "Admin" },
   { href: "/admin/earnings", label: "Earnings", icon: Users, section: "Admin" },
 ];

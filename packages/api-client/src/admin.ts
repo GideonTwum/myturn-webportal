@@ -21,6 +21,12 @@ export function createAdminApi(client: ApiClient) {
     adminOverview() {
       return client.get<unknown>("/admin/overview", false);
     },
+    listAdminPayments() {
+      return client.get<import("./types").AdminPaymentsResponse>(
+        "/admin/payments",
+        false,
+      );
+    },
     hqOverview() {
       return client.get<unknown>("/hq/overview", false);
     },

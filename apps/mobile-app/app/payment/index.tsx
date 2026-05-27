@@ -9,6 +9,9 @@ import { IS_MOCK_UI } from "@/constants/app-mode";
 import { StagingSafetyNotice } from "@/components/StagingSafetyNotice";
 import { formatGhs } from "@/lib/format-money";
 import { usePaymentFlow } from "@/hooks/usePaymentFlow";
+import { useTrustProfile } from "@/hooks/useMemberQueries";
+import { GhanaCardGateModal } from "@/components/premium/GhanaCardGateModal";
+import { ghanaCardStatusLabel, needsGhanaCardForContribute } from "@/lib/ghana-card-status";
 import { tokens } from "@/constants/tokens";
 import { fonts } from "@/constants/typography";
 
@@ -27,7 +30,19 @@ export default function MoMoPaymentScreen() {
 
   const [step, setStep] = useState<Step>(1);
   const [mockStep, setMockStep] = useState<Step>(1);
+  const [ghanaGateOpen, setGhanaGateOpen] = useState(false);
+  const trustQuery = useTrustProfile(!IS_MOCK_UI);
+  const mustVerifyGhana = needsGhanaCardForContribute(
+    trustQuery.data?.ghanaCardVerificationStatus,
+    trustQuery.data?.unlocks.ghanaCardVerified,
+  );
   const flow = usePaymentFlow(IS_MOCK_UI ? undefined : contributionId);
+
+  useEffect(() => {
+    if (!IS_MOCK_UI && mustVerifyGhana && contributionId) {
+      setGhanaGateOpen(true);
+    }
+  }, [mustVerifyGhana, contributionId]);
 
   useEffect(() => {
     if (!IS_MOCK_UI && flow.isApproved) {
@@ -196,6 +211,19 @@ export default function MoMoPaymentScreen() {
           </PremiumCard>
         </FadeInView>
       ) : null}
+
+      <GhanaCardGateModal
+        visible={ghanaGateOpen}
+        statusLabel={ghanaCardStatusLabel(trustQuery.data?.ghanaCardVerificationStatus)}
+        onClose={() => {
+          setGhanaGateOpen(false);
+          router.back();
+        }}
+        onVerify={() => {
+          setGhanaGateOpen(false);
+          router.push("/(onboarding)/ghana-card");
+        }}
+      />
     </PremiumScreen>
   );
 }

@@ -15,7 +15,7 @@ export default function HqLayout({ children }: { children: React.ReactNode }) {
       return;
     }
     if (user.role === UserRole.USER) {
-      window.location.href = "/member";
+      window.location.href = "/login";
       return;
     }
     if (user.role !== UserRole.SUPER_ADMIN) {

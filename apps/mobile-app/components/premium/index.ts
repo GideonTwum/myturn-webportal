@@ -12,6 +12,7 @@ export { ContributionProgress } from "./ContributionProgress";
 export { EmptyState } from "./EmptyState";
 export { FloatingActionButton } from "./FloatingActionButton";
 export { GlassHeader } from "./GlassHeader";
+export { GhanaCardGateModal } from "./GhanaCardGateModal";
 export { GradientButton } from "./GradientButton";
 export { HealthScoreRing } from "./HealthScoreRing";
 export { OtpInputRow } from "./OtpInputRow";

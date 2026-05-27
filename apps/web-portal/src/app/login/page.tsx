@@ -14,7 +14,7 @@ const inputClass = cn(
 );
 
 export default function LoginPage() {
-  const { login, user, ready } = useAuth();
+  const { login, logout, user, ready } = useAuth();
   const router = useRouter();
   const [email, setEmail] = useState("hq@myturn.local");
   const [password, setPassword] = useState("ChangeMe123!");
@@ -118,10 +118,9 @@ export default function LoginPage() {
             Join a group with an invite code
           </Link>
         </p>
-        <p className="mt-3 text-center text-sm text-gray-600">
-          <Link href="/member/sign-in" className="font-semibold text-brand-green hover:underline">
-            Member sign-in (phone)
-          </Link>
+        <p className="mt-3 text-center text-xs text-gray-500">
+          Members use the <span className="font-medium">MyTurn Susu</span> mobile app for
+          sign-in and payments.
         </p>
         <p className="mt-3 text-center text-xs text-gray-500">
           Demo seed:{" "}

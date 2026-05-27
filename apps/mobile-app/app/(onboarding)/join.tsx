@@ -18,7 +18,7 @@ import { fonts } from "@/constants/typography";
 export default function JoinGroupScreen() {
   const router = useRouter();
   const demo = useDemoOptional();
-  const { user, applySession } = useAuth();
+  const { user, applySession, refreshProfile } = useAuth();
   const joinMutation = useJoinGroup();
   const [fullName, setFullName] = useState("");
   const [inviteCode, setInviteCode] = useState("");
@@ -57,6 +57,7 @@ export default function JoinGroupScreen() {
       if (res.access_token && res.user) {
         await applySession(resolveAccessToken(res), res.user as Parameters<typeof applySession>[1]);
       }
+      await refreshProfile();
       router.replace("/(main)/home");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not join group");

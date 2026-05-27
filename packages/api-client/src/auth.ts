@@ -1,5 +1,5 @@
 import type { ApiClient } from "./client";
-import type { AuthSession, OtpRequestResponse } from "./types";
+import type { AuthSession, MemberMeResponse, OtpRequestResponse } from "./types";
 
 export function resolveAccessToken(payload: {
   access_token?: string;
@@ -38,7 +38,7 @@ export function createAuthApi(client: ApiClient) {
       return client.get<AuthSession["user"]>("/auth/me", false);
     },
     memberMe() {
-      return client.get<AuthSession["user"]>("/member/me", true);
+      return client.get<MemberMeResponse>("/member/me", true);
     },
   };
 }

@@ -237,7 +237,7 @@ const styles = StyleSheet.create({
   avatarText: { fontFamily: fonts.label, color: tokens.colors.onPrimary, fontSize: 18 },
   name: { fontFamily: fonts.label, fontSize: 15, color: tokens.colors.onSurface },
   hero: { padding: 20 },
-  heroLabel: { fontFamily: fonts.label, fontSize: 13, color: tokens.colors.primaryFixed, opacity: 0.9 },
+  heroLabel: { fontFamily: fonts.label, fontSize: 13, color: tokens.colors.primaryFixedDim, opacity: 0.9 },
   heroDays: {
     fontFamily: fonts.displayExtra,
     fontSize: 28,

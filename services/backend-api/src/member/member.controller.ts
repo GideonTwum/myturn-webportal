@@ -1,8 +1,12 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
+  Patch,
   Post,
   Req,
   UseGuards,
@@ -39,6 +43,11 @@ export class MemberController {
     return this.member.getGroup(req.user.sub, id);
   }
 
+  @Get("groups/:id/members")
+  groupMembers(@Req() req: AuthedReq, @Param("id") id: string) {
+    return this.member.getGroupMembers(req.user.sub, id);
+  }
+
   @Get("payouts")
   payouts(@Req() req: AuthedReq) {
     return this.member.listPayouts(req.user.sub);
@@ -52,6 +61,23 @@ export class MemberController {
   @Get("notifications")
   notifications(@Req() req: AuthedReq) {
     return this.member.listNotifications(req.user.sub);
+  }
+
+  @Delete("notifications/clear-all")
+  @HttpCode(HttpStatus.OK)
+  clearNotifications(@Req() req: AuthedReq) {
+    return this.member.clearAllNotifications(req.user.sub);
+  }
+
+  @Patch("notifications/:id/read")
+  markNotificationRead(@Req() req: AuthedReq, @Param("id") id: string) {
+    return this.member.markNotificationRead(req.user.sub, id);
+  }
+
+  @Delete("notifications/:id")
+  @HttpCode(HttpStatus.OK)
+  deleteNotification(@Req() req: AuthedReq, @Param("id") id: string) {
+    return this.member.deleteNotification(req.user.sub, id);
   }
 
   @Post("devices/register")

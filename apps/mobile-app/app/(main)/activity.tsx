@@ -1,15 +1,18 @@
+import { useRouter } from "expo-router";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import { Sparkles, Users } from "lucide-react-native";
 import { ActivityCard, GlassHeader, PremiumCard, PremiumScreen } from "@/components/premium";
 import { PremiumIcon } from "@/components/icons/PremiumIcon";
 import { IS_MOCK_UI } from "@/constants/app-mode";
 import { notificationsToActivity } from "@/lib/activity-mapper";
+import { resolveNotificationRoute } from "@/lib/notification-routes";
 import { useMemberNotifications } from "@/hooks/useMemberQueries";
 import { mockActivities } from "@/mock-data";
 import { tokens } from "@/constants/tokens";
 import { fonts } from "@/constants/typography";
 
 export default function ActivityScreen() {
+  const router = useRouter();
   const { data, isLoading } = useMemberNotifications(!IS_MOCK_UI);
   const activities = IS_MOCK_UI
     ? mockActivities
@@ -38,7 +41,23 @@ export default function ActivityScreen() {
       ) : activities.length === 0 ? (
         <Text style={styles.empty}>No activity yet. Contribute to see live updates.</Text>
       ) : (
-        activities.map((item, i) => <ActivityCard key={item.id} item={item} index={i} />)
+        activities.map((item, i) => (
+          <ActivityCard
+            key={item.id}
+            item={item}
+            index={i}
+            onPress={
+              item.raw
+                ? () => {
+                    const route = resolveNotificationRoute(item.raw!);
+                    if (route.pathname !== "/notifications") {
+                      router.push(route as never);
+                    }
+                  }
+                : undefined
+            }
+          />
+        ))
       )}
     </PremiumScreen>
   );
