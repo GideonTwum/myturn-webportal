@@ -17,8 +17,65 @@ export function formatArkeselRecipient(phoneDigits: string): string {
 export type ArkeselSendResponse = {
   status?: string;
   message?: string;
-  data?: Array<{ recipient?: string; id?: string }>;
+  data?: Array<
+    | { recipient?: string; id?: string }
+    | { "invalid numbers"?: string[] }
+    | Record<string, unknown>
+  >;
 };
+
+/** Validate Arkesel v2 send response — HTTP 200 can still mean invalid numbers or failure. */
+export function parseArkeselSendSuccess(
+  body: ArkeselSendResponse | null,
+  recipient: string,
+): { providerRef?: string } {
+  const status = body?.status?.trim().toLowerCase();
+  if (status && status !== "success") {
+    throw new Error(
+      `Arkesel status ${body?.status}: ${body?.message ?? "send failed"}`,
+    );
+  }
+  const rows = body?.data ?? [];
+  const invalid: string[] = [];
+  let providerRef: string | undefined;
+  for (const row of rows) {
+    if (!row || typeof row !== "object") continue;
+    const inv = (row as { "invalid numbers"?: string[] })["invalid numbers"];
+    if (Array.isArray(inv)) {
+      invalid.push(...inv);
+      continue;
+    }
+    const r = (row as { recipient?: string; id?: string }).recipient?.replace(
+      /\D/g,
+      "",
+    );
+    const id = (row as { recipient?: string; id?: string }).id;
+    if (r && id && (r === recipient || r.endsWith(recipient.slice(-9)))) {
+      providerRef = id;
+    }
+  }
+  if (invalid.length > 0) {
+    throw new Error(
+      `Arkesel rejected recipient(s): ${invalid.join(", ")}`,
+    );
+  }
+  if (!providerRef && rows.length > 0) {
+    const first = rows.find(
+      (row) =>
+        row &&
+        typeof row === "object" &&
+        "id" in row &&
+        typeof (row as { id?: string }).id === "string",
+    ) as { id?: string } | undefined;
+    providerRef = first?.id;
+  }
+  if (!providerRef) {
+    throw new Error(
+      `Arkesel response missing message id for ${recipient}: ${JSON.stringify(body)?.slice(0, 300)}`,
+    );
+  }
+  return { providerRef };
+}
 
 export class ArkeselSmsProvider implements SmsProvider {
   readonly name = "arkesel";
@@ -124,7 +181,7 @@ export class ArkeselSmsProvider implements SmsProvider {
           `Arkesel HTTP ${res.status}: ${body?.message ?? text.slice(0, 200)}`,
         );
       }
-      const providerRef = body?.data?.[0]?.id;
+      const { providerRef } = parseArkeselSendSuccess(body, recipient);
       return {
         delivered: true,
         provider: this.name,

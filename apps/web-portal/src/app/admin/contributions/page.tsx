@@ -36,6 +36,8 @@ const selectClass = cn(
 export default function AdminContributionsPage() {
   const { mutate } = useSWRConfig();
   const [groupId, setGroupId] = useState("");
+  const [payBusy, setPayBusy] = useState<string | null>(null);
+  const [payMsg, setPayMsg] = useState<string | null>(null);
 
   const { data: groups, error: groupsErr, isLoading: groupsLoading } = useSWR<
     GroupMini[]
@@ -65,10 +67,23 @@ export default function AdminContributionsPage() {
   const unpaidSet = new Set(readiness?.unpaidMembers.map((u) => u.userId));
 
   async function recordPayment(contributionId: string) {
-    await getMyturnApi().admin.mockContributionPayment({ contributionId });
-    void mutate(contribUrl);
-    void mutate(readinessUrl);
-    void mutate("/groups/mine");
+    setPayMsg(null);
+    setPayBusy(contributionId);
+    try {
+      await getMyturnApi().admin.mockContributionPayment({ contributionId });
+      void mutate(contribUrl);
+      void mutate(readinessUrl);
+      void mutate("/groups/mine");
+      setPayMsg("Payment recorded.");
+    } catch (e) {
+      const msg =
+        e instanceof Error ? e.message : "Could not record payment.";
+      setPayMsg(msg);
+      void mutate(contribUrl);
+      void mutate(readinessUrl);
+    } finally {
+      setPayBusy(null);
+    }
   }
 
   return (
@@ -96,6 +111,18 @@ export default function AdminContributionsPage() {
       {groupsErr && (
         <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {groupsErr instanceof Error ? groupsErr.message : "Failed"}
+        </p>
+      )}
+      {payMsg && (
+        <p
+          className={cn(
+            "mt-4 rounded-xl border px-4 py-3 text-sm",
+            payMsg === "Payment recorded."
+              ? "border-green-200 bg-green-50 text-green-900"
+              : "border-amber-200 bg-amber-50 text-amber-950",
+          )}
+        >
+          {payMsg}
         </p>
       )}
       {groups && groups.length > 0 && (
@@ -220,10 +247,11 @@ export default function AdminContributionsPage() {
                   r.status !== "PAID" ? (
                     <button
                       type="button"
+                      disabled={payBusy === r.id}
                       onClick={() => void recordPayment(r.id)}
-                      className="rounded-lg border border-gray-300 bg-white px-2 py-1 text-xs font-semibold text-gray-800 hover:bg-gray-50"
+                      className="rounded-lg border border-gray-300 bg-white px-2 py-1 text-xs font-semibold text-gray-800 hover:bg-gray-50 disabled:opacity-50"
                     >
-                      Record
+                      {payBusy === r.id ? "Recording…" : "Record"}
                     </button>
                   ) : (
                     <span className="text-xs text-gray-400">—</span>

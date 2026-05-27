@@ -86,6 +86,8 @@ Production-oriented staging foundations for OTP (Arkesel), MTN MoMo sandbox, pay
 
 ## 12. Recommended next sprint
 
+**Operator runbook:** [PHASE_2_RUNBOOK.md](./PHASE_2_RUNBOOK.md) (Arkesel → MTN sandbox → webhooks → production tier).
+
 1. **PSP go-live:** MTN sandbox end-to-end with real `requestToPay` and webhook handlers updating intents
 2. **Ledger reconciliation:** match `PaymentRequest` → `Contribution` → ledger entries automatically
 3. **Arkesel staging burn-in:** send real SMS in staging, monitor delivery rates

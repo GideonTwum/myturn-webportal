@@ -126,16 +126,27 @@ async function testOtpRequestVerifyAndInvalid() {
   section("Request, invalid code, verify");
   const phone = process.env.E2E_MEMBER_PHONE_FLOW ?? ephemeralPhone(1);
   info(`Flow phone: ${phone}`);
+  const h = await fetchJson("/health");
+  const smsProvider = h.infrastructure?.sms?.provider ?? "console";
   const req = await fetchJson("/auth/otp/request", {
     method: "POST",
     body: JSON.stringify({ phone }),
   });
-  const code = req.debugCode;
+  const code = req.debugCode ?? process.env.E2E_OTP_CODE;
   if (!code) {
+    if (smsProvider === "arkesel") {
+      ok("OTP request OK (Arkesel — no debugCode; check SMS on device)");
+      info("Skipping automated verify — set E2E_OTP_CODE from SMS to test verify");
+      return;
+    }
     fail("OTP debugCode", "missing — set DEPLOYMENT_TIER=staging, SMS_PROVIDER=console");
     return;
   }
-  ok("OTP request returned debugCode (staging)");
+  ok(
+    req.debugCode
+      ? "OTP request returned debugCode (staging)"
+      : "OTP verify using E2E_OTP_CODE",
+  );
   info(`Code length: ${String(code).length} digits`);
 
   const bad = await fetchRaw("/auth/otp/verify", {

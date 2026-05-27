@@ -38,6 +38,17 @@ export function isStagingRelaxTrust(): boolean {
   return !isProductionTier();
 }
 
+/** On-screen OTP in API responses (staging console SMS). Off when Arkesel is live unless forced. */
+export function isDebugOtpInResponses(): boolean {
+  if (isProductionTier()) return false;
+  const explicit = process.env.OTP_DEBUG_IN_RESPONSES?.trim().toLowerCase();
+  if (explicit === "true" || explicit === "1" || explicit === "yes") return true;
+  if (explicit === "false" || explicit === "0" || explicit === "no") return false;
+  const sms = process.env.SMS_PROVIDER?.trim().toLowerCase() ?? "console";
+  if (sms === "arkesel") return false;
+  return true;
+}
+
 export function getPlatformFeatureFlags(): PlatformFeatureFlags {
   const tier = getDeploymentTier();
   const production = tier === "production";
@@ -46,7 +57,7 @@ export function getPlatformFeatureFlags(): PlatformFeatureFlags {
     mockPayments: !production && process.env.MOCK_PAYMENTS !== "false",
     mockPayoutFinalize: !production && process.env.MOCK_PAYOUTS !== "false",
     stagingRelaxTrust: isStagingRelaxTrust(),
-    debugOtpInResponses: !production,
+    debugOtpInResponses: isDebugOtpInResponses(),
     memberPhoneLogin: !production && process.env.MEMBER_PHONE_LOGIN !== "false",
     allowOpenCors: !process.env.CORS_ORIGIN?.trim(),
   };

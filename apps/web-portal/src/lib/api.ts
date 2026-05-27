@@ -77,9 +77,14 @@ export async function apiFetch<T>(
   try {
     res = await fetch(`${API_BASE}${path}`, { ...init, headers });
   } catch {
+    const isLocalApi =
+      /localhost|127\.0\.0\.1/i.test(API_BASE) ||
+      API_BASE.startsWith("http://127.0.0.1");
     const hint =
       process.env.NODE_ENV === "development"
-        ? ` Cannot reach API at ${API_BASE}. Is the backend running?`
+        ? isLocalApi
+          ? ` Cannot reach API at ${API_BASE}. Is the backend running (npm run dev:api)?`
+          : ` Browser blocked the request (often CORS). Open ${API_BASE}/health in a tab — if that works, set Railway STAGING_CORS_EXTRA to include your dev URL (e.g. http://localhost:3000) and redeploy the API.`
         : ` (Request base: ${API_BASE}). Check NEXT_PUBLIC_API_URL on Vercel, CORS_ORIGIN on the API, and open /api/health in the browser.`;
     throw new Error(`Network error — could not reach the API.${hint}`);
   }
