@@ -1,4 +1,6 @@
 import {
+  forwardRef,
+  Inject,
   Injectable,
   Logger,
   NotImplementedException,
@@ -6,6 +8,8 @@ import {
 } from "@nestjs/common";
 import { getDeploymentTier } from "../common/platform-env";
 import { IdempotencyService } from "../common/idempotency/idempotency.service";
+import { createPaymentProvider } from "../payments/providers/placeholder-providers";
+import { PaymentRequestsService } from "../payment-requests/payment-requests.service";
 import { verifyWebhookSignature } from "./webhook-signature";
 
 export type InboundWebhook = {
@@ -20,7 +24,11 @@ export type InboundWebhook = {
 export class WebhooksService {
   private readonly logger = new Logger(WebhooksService.name);
 
-  constructor(private idempotency: IdempotencyService) {}
+  constructor(
+    private idempotency: IdempotencyService,
+    @Inject(forwardRef(() => PaymentRequestsService))
+    private paymentRequests: PaymentRequestsService,
+  ) {}
 
   async processInbound(payload: InboundWebhook) {
     if (getDeploymentTier() === "production" && payload.provider === "mock") {
@@ -36,7 +44,12 @@ export class WebhooksService {
 
     const correlationId =
       payload.correlationId ??
-      String(payload.body?.externalRef ?? payload.body?.referenceId ?? "");
+      String(
+        payload.body?.externalId ??
+          payload.body?.referenceId ??
+          payload.body?.externalRef ??
+          "",
+      );
 
     if (getDeploymentTier() === "production" && !sig.valid) {
       this.logger.warn(
@@ -59,6 +72,12 @@ export class WebhooksService {
       `webhook:${idemKey}`,
       86400,
       async () => {
+        let settlement: { settled: boolean; status?: string } | null = null;
+        const providerNorm = payload.provider.trim().toLowerCase();
+        if (providerNorm === "mtn" || providerNorm.startsWith("mtn-")) {
+          settlement = await this.applyMtnWebhook(payload.body, correlationId);
+        }
+
         this.logger.log(
           JSON.stringify({
             domain: "webhook",
@@ -66,18 +85,15 @@ export class WebhooksService {
             provider: payload.provider,
             signatureVerified: sig.valid,
             correlationId: correlationId || null,
+            settlement,
             replayProtection: "idempotency_key",
-            note:
-              sig.valid || getDeploymentTier() !== "production"
-                ? "accepted"
-                : "signature_skipped_staging",
           }),
         );
         return {
           accepted: true,
           provider: payload.provider,
-          status: "logged",
-          reconciliation: "PENDING",
+          status: settlement?.settled ? settlement.status ?? "settled" : "logged",
+          reconciliation: settlement?.settled ? "APPLIED" : "PENDING",
           correlationId: correlationId || null,
         };
       },
@@ -95,5 +111,40 @@ export class WebhooksService {
     }
 
     return result.value;
+  }
+
+  private async applyMtnWebhook(
+    body: Record<string, unknown>,
+    correlationId: string,
+  ) {
+    const psp = createPaymentProvider();
+    const ref = String(
+      correlationId ||
+        body.externalId ||
+        body.referenceId ||
+        body.externalRef ||
+        "",
+    ).trim();
+    const parsed = await psp.parseWebhook({
+      provider: "mtn",
+      eventType: String(body.status ?? "callback"),
+      providerRef: ref,
+      externalRef: ref,
+      body,
+    });
+    if (!ref || !parsed) {
+      return { settled: false };
+    }
+    if (parsed.status === "APPROVED") {
+      return this.paymentRequests.settleByExternalRef(ref, "APPROVED");
+    }
+    if (parsed.status === "FAILED") {
+      return this.paymentRequests.settleByExternalRef(
+        ref,
+        "FAILED",
+        "MoMo reported payment failed",
+      );
+    }
+    return { settled: false };
   }
 }

@@ -19,7 +19,7 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://myturn-webportal-production.up.railway.app/api",
+        "EXPO_PUBLIC_API_URL": "https://myturn-webportal-staging.up.railway.app/api",
         "EXPO_PUBLIC_DEPLOYMENT_TIER": "staging",
         "EXPO_PUBLIC_MOCK_UI": "false"
       }

@@ -1,5 +1,6 @@
 import { Logger } from "@nestjs/common";
 import { randomUUID } from "crypto";
+import { getPublicApiBaseUrl } from "../../common/platform-env";
 import type {
   PaymentProvider,
   RequestToPayInput,
@@ -13,6 +14,23 @@ import type {
  * MTN MoMo Collection API (sandbox).
  * @see https://momodeveloper.mtn.com/
  */
+/** MTN Collection API expects MSISDN as 233XXXXXXXXX. */
+export function formatMtnPartyId(phoneDigits: string): string {
+  const d = phoneDigits.replace(/\D/g, "");
+  if (d.startsWith("233")) return d;
+  if (d.startsWith("0")) return `233${d.slice(1)}`;
+  if (d.length === 9) return `233${d}`;
+  return d;
+}
+
+export function resolveMtnCallbackUrl(): string {
+  const explicit = process.env.MTN_MOMO_CALLBACK_HOST?.trim();
+  const base = explicit
+    ? explicit.replace(/\/+$/, "")
+    : getPublicApiBaseUrl().replace(/\/api\/?$/, "");
+  return `${base}/api/webhooks/mtn`;
+}
+
 export class MtnMomoSandboxProvider implements PaymentProvider {
   readonly name = "mtn-momo-sandbox";
   private readonly logger = new Logger(MtnMomoSandboxProvider.name);
@@ -62,8 +80,13 @@ export class MtnMomoSandboxProvider implements PaymentProvider {
     const token = await this.getAccessToken();
     const ref = input.externalRef || randomUUID();
     const correlationId = ref;
-    const target = (process.env.MTN_MOMO_CALLBACK_HOST?.trim() ||
-      "https://example.com") + `/webhooks/mtn`;
+    const target = resolveMtnCallbackUrl();
+    const partyId = formatMtnPartyId(input.phoneDigits);
+    if (!/^233\d{9}$/.test(partyId)) {
+      throw new Error(
+        `Invalid MoMo payer MSISDN ${partyId} — use Ghana mobile 024… or 23324…`,
+      );
+    }
 
     const res = await fetch(`${this.baseUrl()}/collection/v1_0/requesttopay`, {
       method: "POST",
@@ -81,7 +104,7 @@ export class MtnMomoSandboxProvider implements PaymentProvider {
         externalId: ref,
         payer: {
           partyIdType: "MSISDN",
-          partyId: input.phoneDigits.replace(/\D/g, ""),
+          partyId,
         },
         payerMessage: "MyTurn contribution",
         payeeNote: input.paymentRequestId,
@@ -142,8 +165,19 @@ export class MtnMomoSandboxProvider implements PaymentProvider {
   async parseWebhook(payload: WebhookPayload): Promise<VerifyTransactionResult | null> {
     const body = payload.body as Record<string, unknown>;
     const ref = String(
-      body.externalId ?? body.financialTransactionId ?? "",
+      body.externalId ??
+        body.referenceId ??
+        body.X_Reference_Id ??
+        body.financialTransactionId ??
+        "",
     );
+    const direct = String(body.status ?? "").toUpperCase();
+    if (direct === "SUCCESSFUL") {
+      return { status: "APPROVED", raw: body };
+    }
+    if (direct === "FAILED") {
+      return { status: "FAILED", raw: body };
+    }
     if (!ref) return null;
     return this.verifyTransaction({ providerRef: ref, externalRef: ref });
   }

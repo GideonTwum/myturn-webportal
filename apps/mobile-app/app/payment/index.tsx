@@ -128,8 +128,9 @@ export default function MoMoPaymentScreen() {
           </View>
           <Text style={styles.h1}>Check your phone</Text>
           <Text style={styles.sub}>
-            Staging only: no real MoMo prompt. Use the simulate button below to complete{" "}
-            {formatGhs(displayAmount)}.
+            {flow.mockApproveAvailable
+              ? `Staging only: no real MoMo prompt. Use the simulate button below to complete ${formatGhs(displayAmount)}.`
+              : `Approve the MoMo prompt on your phone for ${formatGhs(displayAmount)}. This screen updates when payment is confirmed.`}
           </Text>
           <View style={styles.waiting}>
             <IconCircle icon={Smartphone} size={36} iconSize="md" backgroundColor="transparent" />
@@ -154,15 +155,22 @@ export default function MoMoPaymentScreen() {
               style={{ marginBottom: 8 }}
             />
           ) : null}
-          <GradientButton
-            label={flow.isApproving ? "Approving…" : "Simulate MoMo approval (staging)"}
-            onPress={simulateApprove}
-            disabled={flow.isApproving}
-          />
-          {(flow.isStarting || flow.isApproving) && !IS_MOCK_UI ? (
+          {flow.mockApproveAvailable ? (
+            <GradientButton
+              label={flow.isApproving ? "Approving…" : "Simulate MoMo approval (staging)"}
+              onPress={simulateApprove}
+              disabled={flow.isApproving}
+            />
+          ) : null}
+          {(flow.isStarting || flow.isApproving || (flow.isPending && !flow.mockApproveAvailable)) &&
+          !IS_MOCK_UI ? (
             <ActivityIndicator style={{ marginTop: 12 }} color={tokens.colors.primary} />
           ) : null}
-          <Text style={styles.hint}>Staging: backend records payment, ledger, and notifications.</Text>
+          <Text style={styles.hint}>
+            {flow.mockApproveAvailable
+              ? "Staging: backend records payment, ledger, and notifications."
+              : "Waiting for MoMo approval — do not close the app."}
+          </Text>
         </PremiumCard>
       ) : null}
 

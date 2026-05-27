@@ -7,6 +7,7 @@ import {
 
 export function usePaymentFlow(contributionId: string | undefined) {
   const [requestId, setRequestId] = useState<string | null>(null);
+  const [mockApproveAvailable, setMockApproveAvailable] = useState(false);
   const initiate = useInitiatePayment();
   const approve = useMockApprovePayment();
   const poll = usePaymentRequest(requestId, Boolean(requestId));
@@ -15,6 +16,11 @@ export function usePaymentFlow(contributionId: string | undefined) {
     if (!contributionId) throw new Error("Missing contribution");
     const req = await initiate.mutateAsync(contributionId);
     setRequestId(req.id);
+    setMockApproveAvailable(
+      Boolean(
+        (req as { mockApproveHint?: string }).mockApproveHint?.trim(),
+      ),
+    );
     return req;
   }, [contributionId, initiate]);
 
@@ -31,6 +37,7 @@ export function usePaymentFlow(contributionId: string | undefined) {
 
   return {
     requestId,
+    mockApproveAvailable,
     paymentRequest: poll.data,
     startPayment,
     approvePayment,

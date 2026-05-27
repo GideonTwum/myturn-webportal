@@ -1,12 +1,14 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
 } from "@nestjs/common";
-import { PaymentRequestStatus, UserRole } from "@prisma/client";
+import { PaymentRequestStatus, Prisma, UserRole } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { MemberParticipationService } from "../member/member-participation.service";
 import { IdempotencyService } from "../common/idempotency/idempotency.service";
+import { getPlatformFeatureFlags } from "../common/platform-env";
 import { createPaymentProvider } from "../payments/providers/placeholder-providers";
 import { PaymentIntentService } from "../payments/payment-intent.service";
 import { PaymentIntentStatus } from "../payments/payment-intent.types";
@@ -16,6 +18,7 @@ const REQUEST_TTL_MS = 15 * 60 * 1000;
 
 @Injectable()
 export class PaymentRequestsService {
+  private readonly logger = new Logger(PaymentRequestsService.name);
   private readonly paymentProvider = createPaymentProvider();
 
   constructor(
@@ -25,6 +28,10 @@ export class PaymentRequestsService {
     private idempotency: IdempotencyService,
     private intents: PaymentIntentService,
   ) {}
+
+  private isLiveMomoProvider(): boolean {
+    return this.paymentProvider.name.startsWith("mtn");
+  }
 
   async initiateContributionPayment(userId: string, contributionId: string) {
     await this.participation.assertCanParticipateFinancially(userId);
@@ -49,7 +56,7 @@ export class PaymentRequestsService {
       },
     });
     if (existing) {
-      return this.toDto(existing);
+      return this.buildInitiateResponse(existing);
     }
 
     const user = await this.prisma.user.findUnique({
@@ -57,6 +64,11 @@ export class PaymentRequestsService {
       select: { phone: true },
     });
     const phoneDigits = user?.phone?.replace(/\D/g, "") ?? "";
+    if (this.isLiveMomoProvider() && !phoneDigits) {
+      throw new BadRequestException(
+        "Add a valid Ghana phone number to your profile before paying with MoMo.",
+      );
+    }
 
     const req = await this.prisma.paymentRequest.create({
       data: {
@@ -98,20 +110,62 @@ export class PaymentRequestsService {
           }),
         },
       });
-    } catch {
-      /* mock/staging may not call live PSP */
+    } catch (e) {
+      if (this.isLiveMomoProvider()) {
+        const reason =
+          e instanceof Error ? e.message : "MoMo request failed";
+        await this.prisma.paymentRequest.update({
+          where: { id: req.id },
+          data: {
+            status: PaymentRequestStatus.FAILED,
+            failureReason: reason.slice(0, 500),
+            metadata: this.intents.metadataPatch(req.metadata, {
+              intentStatus: PaymentIntentStatus.FAILED,
+            }),
+          },
+        });
+        throw new BadRequestException(reason);
+      }
+      this.logger.warn(
+        `PSP requestToPay skipped for ${this.paymentProvider.name}: ${e instanceof Error ? e.message : e}`,
+      );
     }
 
+    const fresh = await this.prisma.paymentRequest.findUniqueOrThrow({
+      where: { id: req.id },
+    });
+    return this.buildInitiateResponse(fresh);
+  }
+
+  private buildInitiateResponse(req: {
+    id: string;
+    contributionId: string;
+    groupId: string;
+    amount: Prisma.Decimal;
+    status: PaymentRequestStatus;
+    externalRef: string;
+    expiresAt: Date;
+    approvedAt: Date | null;
+    failureReason: string | null;
+    createdAt: Date;
+  }) {
+    const flags = getPlatformFeatureFlags();
+    const liveMomo = this.isLiveMomoProvider();
     return {
       ...this.toDto(req),
-      message:
-        "Approve the MoMo prompt on your phone. (Staging: use mock-approve endpoint.)",
-      mockApproveHint: `/api/member/payment-requests/${req.id}/mock-approve`,
+      message: liveMomo
+        ? "Approve the MoMo prompt on your phone."
+        : "Approve the MoMo prompt on your phone. (Staging: use mock-approve endpoint.)",
+      ...(flags.mockPayments && !liveMomo
+        ? {
+            mockApproveHint: `/api/member/payment-requests/${req.id}/mock-approve`,
+          }
+        : {}),
     };
   }
 
   async getRequest(userId: string, requestId: string) {
-    const req = await this.prisma.paymentRequest.findFirst({
+    let req = await this.prisma.paymentRequest.findFirst({
       where: { id: requestId, userId },
     });
     if (!req) throw new NotFoundException("Payment request not found");
@@ -135,7 +189,71 @@ export class PaymentRequestsService {
       });
       return this.toDto({ ...req, status: PaymentRequestStatus.EXPIRED });
     }
+
+    if (req.status === PaymentRequestStatus.PENDING && this.isLiveMomoProvider()) {
+      await this.pollPspAndSettle(req.externalRef);
+      req =
+        (await this.prisma.paymentRequest.findFirst({
+          where: { id: requestId, userId },
+        })) ?? req;
+    }
+
     return this.toDto(req);
+  }
+
+  /** Webhook / reconciliation: settle by MoMo reference (PaymentRequest.externalRef). */
+  async settleByExternalRef(
+    externalRef: string,
+    outcome: "APPROVED" | "FAILED",
+    failureReason?: string,
+  ): Promise<{ settled: boolean; status?: PaymentRequestStatus }> {
+    const ref = externalRef.trim();
+    if (!ref) return { settled: false };
+
+    const result = await this.idempotency.runOnce(
+      `settle:${ref}:${outcome}`,
+      86400,
+      async () => {
+        const req = await this.prisma.paymentRequest.findUnique({
+          where: { externalRef: ref },
+        });
+        if (!req) {
+          return { settled: false as const };
+        }
+        if (req.status !== PaymentRequestStatus.PENDING) {
+          return { settled: false as const, status: req.status };
+        }
+        if (req.expiresAt < new Date()) {
+          await this.markExpired(req);
+          return { settled: true as const, status: PaymentRequestStatus.EXPIRED };
+        }
+        if (outcome === "FAILED") {
+          await this.markFailed(req, failureReason ?? "MoMo payment failed");
+          return { settled: true as const, status: PaymentRequestStatus.FAILED };
+        }
+        await this.approvePendingRequest(req);
+        return { settled: true as const, status: PaymentRequestStatus.APPROVED };
+      },
+    );
+    return result.value;
+  }
+
+  private async pollPspAndSettle(externalRef: string) {
+    try {
+      const verify = await this.paymentProvider.verifyTransaction({
+        providerRef: externalRef,
+        externalRef,
+      });
+      if (verify.status === "APPROVED") {
+        await this.settleByExternalRef(externalRef, "APPROVED");
+      } else if (verify.status === "FAILED") {
+        await this.settleByExternalRef(externalRef, "FAILED");
+      }
+    } catch (e) {
+      this.logger.warn(
+        `MoMo poll failed for ${externalRef}: ${e instanceof Error ? e.message : e}`,
+      );
+    }
   }
 
   /** Staging: simulates MoMo approval → records contribution payment. */
@@ -160,48 +278,13 @@ export class PaymentRequestsService {
       throw new BadRequestException(`Request is ${req.status}`);
     }
     if (req.expiresAt < new Date()) {
-      this.intents.transitionIntent(
-        PaymentIntentStatus.PENDING,
-        PaymentIntentStatus.EXPIRED,
-        { requestId: req.id, correlationId: req.externalRef },
-      );
-      await this.prisma.paymentRequest.update({
-        where: { id: req.id },
-        data: {
-          status: PaymentRequestStatus.EXPIRED,
-          metadata: this.intents.metadataPatch(req.metadata, {
-            intentStatus: PaymentIntentStatus.EXPIRED,
-          }),
-        },
-      });
+      await this.markExpired(req);
       throw new BadRequestException("Payment request expired");
     }
 
-    this.intents.transitionIntent(
-      PaymentIntentStatus.PENDING,
-      PaymentIntentStatus.APPROVED,
-      { requestId: req.id, correlationId: req.externalRef },
-    );
-
-    await this.payments.mockRecordContributionPayment(
-      req.contributionId,
-      userId,
-      UserRole.USER,
-    );
-
-    const providerRef = `mock-momo-${Date.now()}`;
-    const updated = await this.prisma.paymentRequest.update({
+    await this.approvePendingRequest(req);
+    const updated = await this.prisma.paymentRequest.findUniqueOrThrow({
       where: { id: req.id },
-      data: {
-        status: PaymentRequestStatus.APPROVED,
-        approvedAt: new Date(),
-        providerRef,
-        metadata: {
-          ...(typeof req.metadata === "object" && req.metadata ? req.metadata : {}),
-          intentStatus: PaymentIntentStatus.APPROVED,
-          reconciliationStatus: "PENDING",
-        },
-      },
     });
 
     return {
@@ -212,6 +295,80 @@ export class PaymentRequestsService {
         reference: updated.externalRef,
       },
     };
+  }
+
+  private async approvePendingRequest(req: {
+    id: string;
+    userId: string;
+    contributionId: string;
+    externalRef: string;
+    metadata: Prisma.JsonValue;
+    amount: Prisma.Decimal;
+    providerRef: string | null;
+  }) {
+    this.intents.transitionIntent(
+      PaymentIntentStatus.PENDING,
+      PaymentIntentStatus.APPROVED,
+      { requestId: req.id, correlationId: req.externalRef },
+    );
+
+    await this.payments.mockRecordContributionPayment(
+      req.contributionId,
+      req.userId,
+      UserRole.USER,
+    );
+
+    await this.prisma.paymentRequest.update({
+      where: { id: req.id },
+      data: {
+        status: PaymentRequestStatus.APPROVED,
+        approvedAt: new Date(),
+        providerRef: req.providerRef ?? req.externalRef,
+        metadata: {
+          ...(typeof req.metadata === "object" && req.metadata ? req.metadata : {}),
+          intentStatus: PaymentIntentStatus.APPROVED,
+          reconciliationStatus: "PENDING",
+        },
+      },
+    });
+  }
+
+  private async markExpired(req: { id: string; externalRef: string; metadata: Prisma.JsonValue }) {
+    this.intents.transitionIntent(
+      PaymentIntentStatus.PENDING,
+      PaymentIntentStatus.EXPIRED,
+      { requestId: req.id, correlationId: req.externalRef },
+    );
+    await this.prisma.paymentRequest.update({
+      where: { id: req.id },
+      data: {
+        status: PaymentRequestStatus.EXPIRED,
+        metadata: this.intents.metadataPatch(req.metadata, {
+          intentStatus: PaymentIntentStatus.EXPIRED,
+        }),
+      },
+    });
+  }
+
+  private async markFailed(
+    req: { id: string; externalRef: string; metadata: Prisma.JsonValue },
+    failureReason: string,
+  ) {
+    this.intents.transitionIntent(
+      PaymentIntentStatus.PENDING,
+      PaymentIntentStatus.FAILED,
+      { requestId: req.id, correlationId: req.externalRef },
+    );
+    await this.prisma.paymentRequest.update({
+      where: { id: req.id },
+      data: {
+        status: PaymentRequestStatus.FAILED,
+        failureReason: failureReason.slice(0, 500),
+        metadata: this.intents.metadataPatch(req.metadata, {
+          intentStatus: PaymentIntentStatus.FAILED,
+        }),
+      },
+    });
   }
 
   private toDto(req: {

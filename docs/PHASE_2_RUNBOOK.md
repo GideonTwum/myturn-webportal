@@ -102,7 +102,9 @@ MTN_MOMO_API_KEY=<sandbox API key>
 MTN_MOMO_CALLBACK_HOST=https://myturn-webportal-staging.up.railway.app
 ```
 
-`MTN_MOMO_CALLBACK_HOST` must be the **public** Railway host (no `/api` suffix). Callback URL becomes `{host}/api/webhooks/mtn`.
+`MTN_MOMO_CALLBACK_HOST` is the **public Railway host only** (no `/api` suffix). The API registers callbacks at `{host}/api/webhooks/mtn` automatically.
+
+After deploy, **mobile polls** pending payments and **webhooks** can mark them approved — you do not need “Simulate MoMo” when `PAYMENT_PROVIDER=mtn-momo` (keep `MOCK_PAYMENTS=true` only if you still want admin mock record + simulate button).
 
 Optional webhook signing:
 
@@ -144,19 +146,13 @@ Redeploy.
 
 ---
 
-## 2C — Complete payments via webhooks (engineering sprint)
+## 2C — Webhook + poll settlement (shipped in repo)
 
-**Current gap:** `POST /api/webhooks/mtn` accepts and logs callbacks but does **not** yet auto-approve `PaymentRequest` → `Contribution`. Until 2C ships:
+- `POST /api/webhooks/mtn` → settles `PaymentRequest` when MTN reports **SUCCESSFUL**  
+- Mobile **polls** `GET payment-request` while pending → calls MTN verify API and settles  
+- “Simulate MoMo approval” only shows when the API returns `mockApproveHint` (mock provider)
 
-- Keep `MOCK_PAYMENTS=true` for staging testers, **or**
-- Manually reconcile in admin (mock record pay) after MoMo succeeds.
-
-**2C deliverables (code):**
-
-1. Map MTN callback payload → `PaymentRequest` by `externalRef` / `providerRef`  
-2. On `SUCCESSFUL`, call contribution payment recording (replace mock-approve path)  
-3. Enable `ENABLE_RECONCILIATION_JOB=true` on staging for drift checks  
-4. Update mobile: hide “Simulate MoMo approval” when `MOCK_PAYMENTS=false`
+Optional: `ENABLE_RECONCILIATION_JOB=true` on staging for background drift checks.
 
 ---
 

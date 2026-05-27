@@ -3,7 +3,7 @@
 Build an **APK** that points at Railway staging so testers don't need Expo Go.
 
 **App name:** MyTurn Susu  
-**Staging API (preview profile):** `https://myturn-webportal-production.up.railway.app/api`  
+**Staging API (preview profile):** `https://myturn-webportal-staging.up.railway.app/api`  
 **Expo project:** `@ogidi/myturn-mobile`
 
 ---
