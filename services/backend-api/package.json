@@ -28,6 +28,7 @@
     "seed:staging:local": "node scripts/seed-staging-local.cjs",
     "seed:staging:railway": "node scripts/seed-staging-railway.cjs",
     "db:wipe:local": "node scripts/wipe-local.cjs",
+    "db:wipe:staging:railway": "node scripts/wipe-staging-railway.cjs",
     "typecheck": "tsc -p tsconfig.build.json --noEmit",
     "test": "vitest run",
     "test:otp": "vitest run src/auth/otp",

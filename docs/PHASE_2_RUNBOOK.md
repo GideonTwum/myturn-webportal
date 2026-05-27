@@ -199,6 +199,25 @@ REDIS_URL=${{ Redis.REDIS_URL }}
 
 ---
 
+## Reset all staging data (Postgres)
+
+From repo root, with `services/backend-api/.env.railway-public` (Railway **public** `DATABASE_URL`):
+
+```powershell
+$env:MYTURN_CONFIRM_STAGING_WIPE="yes"
+npm run db:wipe:staging:railway
+npm run db:seed
+npm run seed:staging:railway
+```
+
+This deletes **all users, groups, payments, etc.** on that database, then restores demo accounts (`hq@myturn.local`, `STAGING-DEMO`, `0240000001`, …).
+
+**Redis:** OTP/rate-limit keys are separate. After a wipe, old OTP codes in Redis expire on their own, or restart/flush the Railway Redis plugin if testers see odd OTP behavior.
+
+**Do not** point `.env.railway-public` at production unless you intend to wipe production.
+
+---
+
 ## Related docs
 
 - [FINTECH_INFRASTRUCTURE_PHASE.md](./FINTECH_INFRASTRUCTURE_PHASE.md) — architecture already built in Phase 1  
