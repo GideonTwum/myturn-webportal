@@ -43,19 +43,23 @@ export default function HomeScreen() {
     : {
         firstName: authUser?.firstName ?? "Member",
         lastName: authUser?.lastName ?? "",
-        contributionStreak: {
-          current: trustQuery.data?.trust.contributionStreak ?? 0,
-          total: Math.max(trustQuery.data?.trust.contributionStreak ?? 0, 10),
-        },
       };
+
+  const activeGroupCount = IS_MOCK_UI
+    ? 1
+    : (groupsQuery.data?.memberships.length ?? 0);
 
   const activities = IS_MOCK_UI
     ? mockActivities.slice(0, 2)
     : notificationsToActivity(notificationsQuery.data?.notifications ?? []).slice(0, 2);
 
-  const healthScore = primaryGroup
+  const cycleProgressPct = primaryGroup
     ? healthScoreFromProgress(primaryGroup.paidDayCount, primaryGroup.expectedDayCount)
-    : 98;
+    : null;
+
+  const cycleProgressLabel = primaryGroup
+    ? `${primaryGroup.paidDayCount}/${primaryGroup.expectedDayCount} days paid this cycle`
+    : "Join a group to track cycle progress";
 
   function contribute() {
     if (IS_MOCK_UI) {
@@ -105,7 +109,7 @@ export default function HomeScreen() {
           <TrustBadge
             label={
               trustQuery.data?.unlocks.ghanaCardVerified || IS_MOCK_UI
-                ? "Verified Member"
+                ? "Verified member"
                 : "Verification in progress"
             }
             verified={Boolean(trustQuery.data?.unlocks.ghanaCardVerified) || IS_MOCK_UI}
@@ -135,7 +139,7 @@ export default function HomeScreen() {
           </View>
           <View style={styles.heroFooter}>
             <View>
-              <Text style={styles.heroMeta}>Contribution</Text>
+              <Text style={styles.heroMeta}>Current cycle</Text>
               <Text style={styles.heroAmount}>
                 {primaryGroup ? formatGhs(primaryGroup.contributionAmount) : "—"}
               </Text>
@@ -147,7 +151,7 @@ export default function HomeScreen() {
                   {
                     width: primaryGroup
                       ? `${Math.min(100, (primaryGroup.paidDayCount / Math.max(1, primaryGroup.expectedDayCount)) * 100)}%`
-                      : "20%",
+                      : "0%",
                   },
                 ]}
               />
@@ -157,23 +161,37 @@ export default function HomeScreen() {
       </PremiumCard>
 
       <View style={styles.statsRow}>
-        <PremiumCard style={styles.statCard}>
-          <ContributionProgress
-            current={displayUser.contributionStreak.current}
-            total={displayUser.contributionStreak.total}
-          />
+        <PremiumCard style={styles.statCardWide}>
+          <PremiumIcon icon={TrendingUp} size="lg" color={tokens.colors.tertiary} />
+          <Text style={styles.healthPct}>
+            {cycleProgressPct != null ? `${cycleProgressPct}%` : "—"}
+          </Text>
+          <Text style={styles.healthLabel}>Your contribution progress</Text>
+          <Text style={styles.healthSub}>{cycleProgressLabel}</Text>
+          <View style={styles.healthTrack}>
+            <View
+              style={[
+                styles.healthFill,
+                { width: `${cycleProgressPct ?? 0}%` },
+              ]}
+            />
+          </View>
         </PremiumCard>
         <PremiumCard style={styles.statCard}>
-          <PremiumIcon icon={Users} size="lg" color={tokens.colors.tertiary} />
-          <Text style={styles.healthPct}>{healthScore}%</Text>
-          <Text style={styles.healthLabel}>Contribution progress</Text>
-          <View style={styles.healthTrack}>
-            <View style={[styles.healthFill, { width: `${healthScore}%` }]} />
-          </View>
-          <View style={styles.healthMetaRow}>
-            <PremiumIcon icon={TrendingUp} size="xs" color={tokens.colors.tertiary} />
-            <Text style={styles.healthMeta}>Backend-synced</Text>
-          </View>
+          {IS_MOCK_UI && demo ? (
+            <ContributionProgress
+              current={demo.user.contributionStreak.current}
+              total={demo.user.contributionStreak.total}
+              label="Demo streak"
+            />
+          ) : (
+            <>
+              <PremiumIcon icon={Users} size="lg" color={tokens.colors.primary} />
+              <Text style={styles.activeCount}>{activeGroupCount}</Text>
+              <Text style={styles.healthLabel}>Active groups</Text>
+              <Text style={styles.healthSub}>From your memberships</Text>
+            </>
+          )}
         </PremiumCard>
       </View>
 
@@ -267,8 +285,16 @@ const styles = StyleSheet.create({
   heroBarFill: { height: "100%", backgroundColor: tokens.colors.secondaryContainer },
   statsRow: { flexDirection: "row", gap: 12, marginTop: 16 },
   statCard: { flex: 1 },
+  statCardWide: { flex: 1.35, minWidth: 0 },
   healthPct: { fontFamily: fonts.display, fontSize: 28, color: tokens.colors.tertiary, marginTop: 4 },
   healthLabel: { fontFamily: fonts.bodyMedium, fontSize: 11, color: tokens.colors.onSurfaceVariant },
+  healthSub: {
+    fontFamily: fonts.body,
+    fontSize: 10,
+    color: tokens.colors.onSurfaceVariant,
+    marginTop: 2,
+    lineHeight: 14,
+  },
   healthTrack: {
     height: 6,
     backgroundColor: tokens.colors.surfaceContainerHigh,
@@ -277,11 +303,11 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   healthFill: { height: "100%", backgroundColor: tokens.colors.tertiary },
-  healthMetaRow: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 6 },
-  healthMeta: {
-    fontFamily: fonts.bodyMedium,
-    fontSize: 10,
-    color: tokens.colors.tertiary,
+  activeCount: {
+    fontFamily: fonts.display,
+    fontSize: 28,
+    color: tokens.colors.primary,
+    marginTop: 4,
   },
   sectionHead: { flexDirection: "row", justifyContent: "space-between", marginTop: 20, marginBottom: 8 },
   section: { fontFamily: fonts.display, fontSize: 20, color: tokens.colors.onSurface },

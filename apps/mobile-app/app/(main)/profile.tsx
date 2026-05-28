@@ -1,5 +1,5 @@
 import { ScrollView, StyleSheet, Text, View } from "react-native";
-import { Award, Lock, Wallet } from "lucide-react-native";
+import { Award, Lock, Phone, Wallet } from "lucide-react-native";
 import { GlassHeader, GradientButton, PremiumCard, PremiumScreen, TrustBadge } from "@/components/premium";
 import { IconCircle } from "@/components/icons/IconCircle";
 import { PremiumIcon } from "@/components/icons/PremiumIcon";
@@ -27,6 +27,7 @@ export default function ProfileScreen() {
     : {
         firstName: user?.firstName ?? meQuery.data?.firstName ?? "Member",
         lastName: user?.lastName ?? meQuery.data?.lastName ?? "",
+        phone: user?.phone ?? meQuery.data?.phone ?? null,
         trustScore: trustQuery.data?.trust.trustScore ?? 0,
         memberSince: "MyTurn Susu member",
       };
@@ -39,8 +40,10 @@ export default function ProfileScreen() {
     : String(meQuery.data?.payoutsReceivedTotal ?? "0");
 
   const ghanaLabel = ghanaCardStatusLabel(trustQuery.data?.ghanaCardVerificationStatus);
+  const activeGroupCount = IS_MOCK_UI
+    ? 2
+    : (groupsQuery.data?.memberships.length ?? 0);
 
-  const pct = Math.min(100, Math.round((displayUser.trustScore / 1000) * 100));
   const statRows = IS_MOCK_UI
     ? [
         { key: "contributions" as const, v: "12", l: "Contributions" },
@@ -50,19 +53,14 @@ export default function ProfileScreen() {
       ]
     : [
         {
-          key: "contributions" as const,
-          v: String(trustQuery.data?.trust.contributionStreak ?? 0),
-          l: "Streak",
-        },
-        {
           key: "groups" as const,
-          v: String(groupsQuery.data?.memberships.length ?? 0),
+          v: String(activeGroupCount),
           l: "Active groups",
         },
         {
-          key: "onTime" as const,
-          v: `${trustQuery.data?.trust.missedContributionCount ?? 0} missed`,
-          l: "Missed",
+          key: "paidOut" as const,
+          v: String(payoutCount),
+          l: "Payouts received",
         },
       ];
 
@@ -80,24 +78,48 @@ export default function ProfileScreen() {
     <PremiumScreen tabBar header={<GlassHeader />}>
       <PremiumCard>
         <View style={styles.hero}>
-          <View style={styles.scoreRing}>
-            <Text style={styles.score}>{displayUser.trustScore}</Text>
-            <Text style={styles.scoreLabel}>Trust Score</Text>
-          </View>
+          {IS_MOCK_UI ? (
+            <View style={styles.scoreRing}>
+              <Text style={styles.score}>{displayUser.trustScore}</Text>
+              <Text style={styles.scoreLabel}>Demo trust score</Text>
+            </View>
+          ) : (
+            <View style={styles.avatar}>
+              <Text style={styles.avatarText}>
+                {displayUser.firstName[0]}
+                {displayUser.lastName?.[0] ?? ""}
+              </Text>
+            </View>
+          )}
           <View style={{ flex: 1 }}>
             <Text style={styles.name}>
               {displayUser.firstName} {displayUser.lastName}
             </Text>
+            {!IS_MOCK_UI && displayUser.phone ? (
+              <View style={styles.phoneRow}>
+                <PremiumIcon icon={Phone} size="xs" color={tokens.colors.onSurfaceVariant} />
+                <Text style={styles.phone}>{displayUser.phone}</Text>
+              </View>
+            ) : null}
             <TrustBadge
-              label={ghanaLabel}
+              label={IS_MOCK_UI ? "Verified member" : ghanaLabel}
               verified={trustQuery.data?.ghanaCardVerificationStatus === "VERIFIED" || IS_MOCK_UI}
             />
             <Text style={styles.since}>{displayUser.memberSince}</Text>
           </View>
         </View>
-        <View style={styles.scoreTrack}>
-          <View style={[styles.scoreFill, { width: `${pct}%` }]} />
-        </View>
+        {IS_MOCK_UI ? (
+          <View style={styles.scoreTrack}>
+            <View
+              style={[
+                styles.scoreFill,
+                {
+                  width: `${Math.min(100, Math.round((displayUser.trustScore / 1000) * 100))}%`,
+                },
+              ]}
+            />
+          </View>
+        ) : null}
       </PremiumCard>
 
       <PremiumCard style={styles.payoutStat} animate={false}>
@@ -136,22 +158,28 @@ export default function ProfileScreen() {
         </PremiumCard>
       ))}
 
-      <Text style={styles.section}>Badges</Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-        {mockBadges.map((b) => (
-          <PremiumCard key={b.id} style={styles.badge} animate={false}>
-            <IconCircle icon={Award} size={40} iconSize="md" />
-            <Text style={styles.badgeTitle}>{b.label}</Text>
-          </PremiumCard>
-        ))}
-      </ScrollView>
+      {IS_MOCK_UI ? (
+        <>
+          <Text style={styles.section}>Badges</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            {mockBadges.map((b) => (
+              <PremiumCard key={b.id} style={styles.badge} animate={false}>
+                <IconCircle icon={Award} size={40} iconSize="md" />
+                <Text style={styles.badgeTitle}>{b.label}</Text>
+              </PremiumCard>
+            ))}
+          </ScrollView>
+        </>
+      ) : null}
 
       {!IS_MOCK_UI ? (
         <GradientButton label="Sign out" variant="ghost" onPress={() => void signOut()} style={{ marginTop: 24 }} />
       ) : null}
       <View style={styles.secure}>
         <PremiumIcon icon={Lock} size="xs" color={tokens.colors.onSurfaceVariant} />
-        <Text style={styles.secureText}>Profile data synced from backend</Text>
+        <Text style={styles.secureText}>
+          {IS_MOCK_UI ? "Demo profile — not connected to API" : "Profile synced from backend"}
+        </Text>
       </View>
     </PremiumScreen>
   );
@@ -159,6 +187,17 @@ export default function ProfileScreen() {
 
 const styles = StyleSheet.create({
   hero: { flexDirection: "row", gap: 16, alignItems: "center" },
+  avatar: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: tokens.colors.primaryContainer,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 3,
+    borderColor: tokens.colors.primary,
+  },
+  avatarText: { fontFamily: fonts.display, fontSize: 28, color: tokens.colors.primary },
   scoreRing: {
     width: 80,
     height: 80,
@@ -171,6 +210,8 @@ const styles = StyleSheet.create({
   score: { fontFamily: fonts.displayExtra, fontSize: 22, color: tokens.colors.primary },
   scoreLabel: { fontFamily: fonts.bodyMedium, fontSize: 9, color: tokens.colors.onSurfaceVariant },
   name: { fontFamily: fonts.display, fontSize: 20, color: tokens.colors.onSurface },
+  phoneRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 4 },
+  phone: { fontFamily: fonts.body, fontSize: 13, color: tokens.colors.onSurfaceVariant },
   since: { fontFamily: fonts.body, fontSize: 12, color: tokens.colors.onSurfaceVariant, marginTop: 8 },
   scoreTrack: {
     height: 6,

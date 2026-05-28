@@ -1,3 +1,4 @@
+/** Demo-only fields (trustScore, contributionStreak) — used only when EXPO_PUBLIC_MOCK_UI=true. */
 export type MockUser = {
   id: string;
   firstName: string;
@@ -5,8 +6,10 @@ export type MockUser = {
   phone: string;
   phoneMasked: string;
   avatarUrl?: string;
+  /** UI demo only — not synced from backend User.trustScore */
   trustScore: number;
   verified: boolean;
+  /** UI demo only — not synced from backend User.contributionStreak */
   contributionStreak: { current: number; total: number };
   memberSince: string;
 };

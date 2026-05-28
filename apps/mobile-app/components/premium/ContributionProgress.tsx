@@ -10,7 +10,8 @@ type Props = {
   label?: string;
 };
 
-export function ContributionProgress({ current, total, label = "Contribution Streak" }: Props) {
+/** Legacy streak ring — use only in MOCK_UI demo; real cycle progress lives on Home stats. */
+export function ContributionProgress({ current, total, label = "Demo streak" }: Props) {
   const pct = Math.min(100, Math.round((current / total) * 100));
 
   return (
@@ -26,7 +27,7 @@ export function ContributionProgress({ current, total, label = "Contribution Str
       </View>
       <View style={styles.metaRow}>
         <PremiumIcon icon={Flame} size="xs" color={tokens.colors.primary} />
-        <Text style={styles.meta}>Excellent streak</Text>
+        <Text style={styles.meta}>Demo only</Text>
       </View>
     </View>
   );
