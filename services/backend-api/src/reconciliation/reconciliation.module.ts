@@ -1,9 +1,18 @@
 import { Module } from "@nestjs/common";
+import { LedgerAccountsModule } from "../ledger-accounts/ledger-accounts.module";
 import { ReconciliationService } from "./reconciliation.service";
 import { ReconciliationJob } from "./reconciliation.job";
+import { ReconciliationSummaryService } from "./reconciliation-summary.service";
+import { ReconciliationSummaryController } from "./reconciliation-summary.controller";
 
 @Module({
-  providers: [ReconciliationService, ReconciliationJob],
-  exports: [ReconciliationService],
+  imports: [LedgerAccountsModule],
+  controllers: [ReconciliationSummaryController],
+  providers: [
+    ReconciliationService,
+    ReconciliationJob,
+    ReconciliationSummaryService,
+  ],
+  exports: [ReconciliationService, ReconciliationSummaryService],
 })
 export class ReconciliationModule {}

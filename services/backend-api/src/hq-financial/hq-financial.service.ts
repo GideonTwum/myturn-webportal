@@ -67,7 +67,7 @@ export class HqFinancialService {
 
   async getFinancialOverview() {
     const platform = getFixedGroupFinancePlatformSettings();
-    const [marginAgg, payoutCompletedAgg, payoutCompletedCount] =
+    const [marginAgg, payoutCompletedAgg, payoutCompletedCount, revenueAccount] =
       await Promise.all([
         this.prisma.adminEarning.aggregate({
           _sum: {
@@ -77,11 +77,18 @@ export class HqFinancialService {
           },
         }),
         this.prisma.payout.aggregate({
-          where: { status: PayoutStatus.COMPLETED },
+          where: {
+            status: { in: [PayoutStatus.COMPLETED, PayoutStatus.CREDITED] },
+          },
           _sum: { amount: true },
         }),
         this.prisma.payout.count({
-          where: { status: PayoutStatus.COMPLETED },
+          where: {
+            status: { in: [PayoutStatus.COMPLETED, PayoutStatus.CREDITED] },
+          },
+        }),
+        this.prisma.ledgerAccount.findFirst({
+          where: { accountType: "MYTURN_REVENUE" },
         }),
       ]);
 
@@ -89,6 +96,7 @@ export class HqFinancialService {
       totalServiceMarginGhs: decStr(marginAgg._sum.marginAmount),
       totalMyTurnEarningsGhs: decStr(marginAgg._sum.platformShareAmount),
       totalAdminEarningsGhs: decStr(marginAgg._sum.adminShareAmount),
+      myturnRevenueWalletBalanceGhs: decStr(revenueAccount?.balance),
       completedPayoutsCount: payoutCompletedCount,
       totalPaidToMembersGhs: decStr(payoutCompletedAgg._sum.amount),
       platformSplits: {

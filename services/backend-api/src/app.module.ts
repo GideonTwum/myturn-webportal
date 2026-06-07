@@ -28,6 +28,8 @@ import { PaymentRequestsModule } from "./payment-requests/payment-requests.modul
 import { HealthModule } from "./health/health.module";
 import { WebhooksModule } from "./webhooks/webhooks.module";
 import { ReconciliationModule } from "./reconciliation/reconciliation.module";
+import { LedgerAccountsModule } from "./ledger-accounts/ledger-accounts.module";
+import { WithdrawalsModule } from "./withdrawals/withdrawals.module";
 import { CorrelationMiddleware } from "./common/correlation/correlation.middleware";
 
 @Module({
@@ -63,6 +65,8 @@ import { CorrelationMiddleware } from "./common/correlation/correlation.middlewa
     HealthModule,
     WebhooksModule,
     ReconciliationModule,
+    LedgerAccountsModule,
+    WithdrawalsModule,
   ],
 })
 export class AppModule implements NestModule {

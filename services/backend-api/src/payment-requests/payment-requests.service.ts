@@ -312,10 +312,21 @@ export class PaymentRequestsService {
       { requestId: req.id, correlationId: req.externalRef },
     );
 
-    await this.payments.mockRecordContributionPayment(
+    await this.payments.recordContributionPayment(
       req.contributionId,
       req.userId,
       UserRole.USER,
+      {
+        provider:
+          typeof req.metadata === "object" &&
+          req.metadata &&
+          "provider" in req.metadata
+            ? String((req.metadata as { provider?: string }).provider)
+            : "mtn-momo",
+        externalRef: req.externalRef,
+        paymentRequestId: req.id,
+        mock: false,
+      },
     );
 
     await this.prisma.paymentRequest.update({

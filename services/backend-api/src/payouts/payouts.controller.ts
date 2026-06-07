@@ -17,9 +17,9 @@ import { PayoutsService } from "./payouts.service";
 type ReqUser = { user: { sub: string; role: UserRole } };
 
 /**
- * Payouts API. Cycle finalization is **mock / staging** (ledger + DB only), not MoMo disbursement.
+ * Payouts API. Cycle finalization credits recipient, admin, and MyTurn revenue wallets.
  *
- * Staging-only: `POST .../mock/finalize-cycle`
+ * Staging: `POST .../mock/finalize-cycle` (MockFeaturesGuard in non-production)
  */
 @Controller("payouts")
 @UseGuards(AuthGuard("jwt"), RolesGuard)

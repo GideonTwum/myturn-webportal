@@ -1,4 +1,5 @@
 import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { type Href, useRouter } from "expo-router";
 import { Award, Lock, Phone, Wallet } from "lucide-react-native";
 import { GlassHeader, GradientButton, PremiumCard, PremiumScreen, TrustBadge } from "@/components/premium";
 import { IconCircle } from "@/components/icons/IconCircle";
@@ -8,6 +9,7 @@ import { IS_MOCK_UI } from "@/constants/app-mode";
 import { formatGhs } from "@/lib/format-money";
 import { ghanaCardStatusLabel } from "@/lib/ghana-card-status";
 import { useMemberGroups, useMemberMe, useMemberPayouts, useTrustProfile } from "@/hooks/useMemberQueries";
+import { useMemberWallet } from "@/hooks/useWalletQueries";
 import { mockBadges, mockPayoutHistory } from "@/mock-data";
 import { useDemoOptional } from "@/providers/DemoProvider";
 import { useAuth } from "@/providers/AuthProvider";
@@ -15,12 +17,20 @@ import { tokens } from "@/constants/tokens";
 import { fonts } from "@/constants/typography";
 
 export default function ProfileScreen() {
+  const router = useRouter();
   const demo = useDemoOptional();
   const { user, signOut, token } = useAuth();
   const meQuery = useMemberMe(Boolean(token) && !IS_MOCK_UI);
   const trustQuery = useTrustProfile(Boolean(token) && !IS_MOCK_UI);
   const groupsQuery = useMemberGroups(Boolean(token) && !IS_MOCK_UI);
   const payoutsQuery = useMemberPayouts(Boolean(token) && !IS_MOCK_UI);
+  const walletQuery = useMemberWallet(Boolean(token) && !IS_MOCK_UI);
+
+  function payoutStatusLabel(status: string | undefined): string {
+    if (!status) return "";
+    if (status === "CREDITED" || status === "COMPLETED") return "Credited to wallet";
+    return status;
+  }
 
   const displayUser = IS_MOCK_UI && demo
     ? demo.user
@@ -60,7 +70,7 @@ export default function ProfileScreen() {
         {
           key: "paidOut" as const,
           v: String(payoutCount),
-          l: "Payouts received",
+          l: "Payouts credited",
         },
       ];
 
@@ -126,12 +136,24 @@ export default function ProfileScreen() {
         <View style={styles.payoutStatRow}>
           <IconCircle icon={Wallet} iconSize="lg" color={tokens.colors.primary} />
           <View style={{ flex: 1 }}>
-            <Text style={styles.payoutStatTitle}>Payouts Received</Text>
+            <Text style={styles.payoutStatTitle}>MyTurn Wallet</Text>
             <Text style={styles.payoutStatMeta}>
-              {payoutCount} payout{payoutCount === 1 ? "" : "s"} · {formatGhs(payoutTotal)} total
+              {IS_MOCK_UI
+                ? `${payoutCount} payout${payoutCount === 1 ? "" : "s"} credited · ${formatGhs(payoutTotal)} total`
+                : walletQuery.isLoading
+                  ? "Loading balance…"
+                  : `Available ${formatGhs(walletQuery.data?.availableBalance ?? "0")} · ${payoutCount} payout${payoutCount === 1 ? "" : "s"} credited`}
             </Text>
           </View>
         </View>
+        {!IS_MOCK_UI ? (
+          <GradientButton
+            label="Open wallet"
+            variant="ghost"
+            onPress={() => router.push("/(main)/wallet" as Href)}
+            style={{ marginTop: 12 }}
+          />
+        ) : null}
       </PremiumCard>
 
       <View style={styles.grid}>
@@ -153,7 +175,7 @@ export default function ProfileScreen() {
           </View>
           <Text style={styles.historyMeta}>
             {p.date}
-            {"status" in p && p.status ? ` · ${p.status}` : ""}
+            {"status" in p && p.status ? ` · ${payoutStatusLabel(String(p.status))}` : ""}
           </Text>
         </PremiumCard>
       ))}

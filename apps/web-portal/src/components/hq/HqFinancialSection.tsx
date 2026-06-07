@@ -27,6 +27,7 @@ type FinancialOverview = {
   totalServiceMarginGhs: string;
   totalMyTurnEarningsGhs: string;
   totalAdminEarningsGhs: string;
+  myturnRevenueWalletBalanceGhs?: string;
   completedPayoutsCount: number;
   totalPaidToMembersGhs: string;
   platformSplits: PlatformSplits;
@@ -207,10 +208,10 @@ export function HqFinancialSection() {
             Financial overview
           </h2>
           <p className="mt-1 text-sm text-gray-600">
-            Aggregated from{" "}
-            <span className="font-medium text-gray-800">AdminEarning</span> and{" "}
-            <span className="font-medium text-gray-800">Payout</span> records.
-            Refreshes automatically from the database.
+            Aggregated from ledger-backed{" "}
+            <span className="font-medium text-gray-800">AdminEarning</span>,{" "}
+            <span className="font-medium text-gray-800">Payout</span>, and wallet
+            accounts. Payouts reflect wallet credits, not MoMo disbursement.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -250,7 +251,7 @@ export function HqFinancialSection() {
         </p>
       )}
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-6">
         <StatCard
           icon={TrendingUp}
           label="Total revenue (service margins)"
@@ -263,7 +264,18 @@ export function HqFinancialSection() {
         />
         <StatCard
           icon={PiggyBank}
-          label="Total MyTurn earnings"
+          label="MyTurn revenue wallet"
+          value={
+            loadingOv
+              ? "—"
+              : moneyLabel(overview?.myturnRevenueWalletBalanceGhs ?? "0")
+          }
+          loading={loadingOv}
+          iconClassName="text-blue-700"
+        />
+        <StatCard
+          icon={PiggyBank}
+          label="Total MyTurn earnings (recorded)"
           value={
             loadingOv
               ? "—"
@@ -285,7 +297,7 @@ export function HqFinancialSection() {
         />
         <StatCard
           icon={Users}
-          label="Payouts completed"
+          label="Payouts credited to wallets"
           value={
             loadingOv ? "—" : String(overview?.completedPayoutsCount ?? 0)
           }
@@ -293,7 +305,7 @@ export function HqFinancialSection() {
         />
         <StatCard
           icon={ArrowDownLeft}
-          label="Paid to members"
+          label="Credited to member wallets"
           value={
             loadingOv
               ? "—"
@@ -405,7 +417,8 @@ export function HqFinancialSection() {
               className={cn(field, "mt-1 w-full")}
             >
               <option value="">All statuses</option>
-              <option value="COMPLETED">Completed</option>
+              <option value="CREDITED">Credited to wallet</option>
+              <option value="COMPLETED">Completed (legacy)</option>
               <option value="PENDING">Pending</option>
               <option value="PROCESSING">Processing</option>
               <option value="FAILED">Failed</option>

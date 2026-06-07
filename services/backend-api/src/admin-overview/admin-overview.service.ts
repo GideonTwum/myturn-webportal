@@ -83,7 +83,7 @@ export class AdminOverviewService {
           amount: p.amount.toString(),
           status: p.status,
           type: p.type,
-          provider: typeof meta.provider === "string" ? meta.provider : "MOCK",
+          provider: typeof meta.provider === "string" ? meta.provider : meta.mockContributionPayment ? "MOCK" : "MOMO",
           createdAt: p.createdAt.toISOString(),
           settledAt: p.completedAt?.toISOString() ?? null,
         };

@@ -8,7 +8,6 @@ import {
 import {
   ContributionStatus,
   GroupStatus,
-  LedgerEntryType,
   PaymentStatus,
   PaymentType,
   Prisma,
@@ -16,10 +15,17 @@ import {
 } from "@prisma/client";
 import { AuditLogsService } from "../audit-logs/audit-logs.service";
 import { CycleComplianceService } from "../cycle-risk/cycle-compliance.service";
-import { LedgerService } from "../ledger/ledger.service";
+import { FinancialAllocationService } from "../ledger-accounts/financial-allocation.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { MemberParticipationService } from "../member/member-participation.service";
+
+export type ContributionSettlementOptions = {
+  provider?: string;
+  externalRef?: string;
+  paymentRequestId?: string;
+  mock?: boolean;
+};
 
 @Injectable()
 export class PaymentsService {
@@ -27,7 +33,7 @@ export class PaymentsService {
 
   constructor(
     private prisma: PrismaService,
-    private ledger: LedgerService,
+    private allocation: FinancialAllocationService,
     private notifications: NotificationsService,
     private audit: AuditLogsService,
     private cycleCompliance: CycleComplianceService,
@@ -41,13 +47,13 @@ export class PaymentsService {
   }
 
   /**
-   * Records one per-day contribution payment (mock / staging).
-   * Completes the contribution row only after paidDayCount reaches expectedDayCount.
+   * Records one per-day contribution payment with wallet ledger allocation.
    */
-  async mockRecordContributionPayment(
+  async recordContributionPayment(
     contributionId: string,
     recordedByUserId: string,
     recordedByRole: UserRole,
+    options: ContributionSettlementOptions = {},
   ) {
     const contribution = await this.prisma.contribution.findUnique({
       where: { id: contributionId },
@@ -81,7 +87,9 @@ export class PaymentsService {
       throw new BadRequestException("This contribution is already fully paid");
     }
     if (contribution.paidDayCount >= contribution.expectedDayCount) {
-      throw new BadRequestException("All required payments for this cycle are already recorded");
+      throw new BadRequestException(
+        "All required payments for this cycle are already recorded",
+      );
     }
 
     const dailyAmount = new Prisma.Decimal(
@@ -90,91 +98,69 @@ export class PaymentsService {
     const nextPaid = contribution.paidDayCount + 1;
     const complete = nextPaid >= contribution.expectedDayCount;
 
-    const pay = await this.prisma.$transaction(async (tx) => {
-      const updated = await tx.contribution.updateMany({
-        where: {
-          id: contributionId,
-          status: { not: ContributionStatus.PAID },
-          paidDayCount: contribution.paidDayCount,
-        },
-        data: {
-          paidDayCount: nextPaid,
-          status: complete ? ContributionStatus.PAID : ContributionStatus.PENDING,
-          paidAt: complete ? new Date() : null,
-        },
-      });
-      if (updated.count !== 1) {
-        throw new BadRequestException(
-          "Could not record payment (already updated or completed)",
-        );
-      }
-      const fresh = await tx.contribution.findUniqueOrThrow({
-        where: { id: contributionId },
-      });
-      const payment = await tx.payment.create({
-        data: {
-          userId: contribution.userId,
-          groupId: contribution.groupId,
-          contributionId: contribution.id,
-          amount: dailyAmount,
-          type: PaymentType.CONTRIBUTION,
-          status: PaymentStatus.COMPLETED,
-          externalRef: `mock_${Date.now()}`,
-          completedAt: new Date(),
-          metadata: {
-            mockContributionPayment: true,
-            paidDayIndex: nextPaid,
-            expectedDayCount: contribution.expectedDayCount,
-          },
-        },
-      });
-      await this.ledger.record(
-        {
-          type: LedgerEntryType.CREDIT,
-          amount: dailyAmount,
-          userId: contribution.userId,
-          groupId: contribution.groupId,
-          referenceType: "Payment",
-          referenceId: payment.id,
-          description:
-            "Mock per-day contribution payment (MoMo not integrated)",
-        },
-        tx,
-      );
-      return { updated: fresh, payment };
+    const result = await this.allocation.recordContributionSettlement({
+      contributionId,
+      recordedByUserId,
+      recordedByRole,
+      amount: dailyAmount,
+      paidDayIndex: nextPaid,
+      expectedDayCount: contribution.expectedDayCount,
+      provider: options.provider,
+      externalRef: options.externalRef,
+      paymentRequestId: options.paymentRequestId,
+      mock: options.mock,
     });
+
+    const pay = result.payment;
+    const tag = options.mock ? "MOCK" : options.provider ?? "SETTLED";
 
     this.logger.log(
-      `[MOCK] contribution payment recorded paymentId=${pay.payment.id} contributionId=${contributionId} groupId=${contribution.groupId} cycle=${contribution.cycleNumber} day=${nextPaid}/${contribution.expectedDayCount} userId=${contribution.userId}`,
+      `[${tag}] contribution payment recorded paymentId=${pay.id} contributionId=${contributionId} groupId=${contribution.groupId} cycle=${contribution.cycleNumber} day=${nextPaid}/${contribution.expectedDayCount}`,
     );
 
-    await this.notifications.create(
-      contribution.userId,
-      complete ? "Contribution complete" : "Contribution recorded",
-      complete
-        ? `Your cycle ${contribution.cycleNumber} contributions for ${contribution.group.name} are complete.`
-        : `Payment ${nextPaid}/${contribution.expectedDayCount} recorded for ${contribution.group.name} (cycle ${contribution.cycleNumber}).`,
-      "PAYMENT_MOCK_CONTRIBUTION",
-      { contributionId, groupId: contribution.groupId },
+    if (!result.duplicate) {
+      await this.notifications.create(
+        contribution.userId,
+        complete ? "Contribution complete" : "Contribution recorded",
+        complete
+          ? `Your cycle ${contribution.cycleNumber} contributions for ${contribution.group.name} are complete.`
+          : `Payment ${nextPaid}/${contribution.expectedDayCount} recorded for ${contribution.group.name} (cycle ${contribution.cycleNumber}).`,
+        options.mock ? "PAYMENT_MOCK_CONTRIBUTION" : "PAYMENT_CONTRIBUTION",
+        { contributionId, groupId: contribution.groupId, paymentId: pay.id },
+      );
+
+      await this.audit.append({
+        actorId: recordedByUserId,
+        action: options.mock ? "MOCK_CONTRIBUTION_PAYMENT" : "CONTRIBUTION_PAYMENT",
+        entityType: "Payment",
+        entityId: pay.id,
+        metadata: {
+          contributionId,
+          groupId: contribution.groupId,
+          paidDayIndex: nextPaid,
+          provider: options.provider ?? null,
+          mock: options.mock ?? false,
+        },
+      });
+
+      await this.cycleCompliance.syncGroupCompliance(contribution.groupId);
+    }
+
+    return { payment: pay, duplicate: result.duplicate };
+  }
+
+  /** Staging/mock path — preserves existing endpoint behavior. */
+  async mockRecordContributionPayment(
+    contributionId: string,
+    recordedByUserId: string,
+    recordedByRole: UserRole,
+  ) {
+    return this.recordContributionPayment(
+      contributionId,
+      recordedByUserId,
+      recordedByRole,
+      { mock: true, provider: "mock" },
     );
-
-    await this.audit.append({
-      actorId: recordedByUserId,
-      action: "MOCK_CONTRIBUTION_PAYMENT",
-      entityType: "Payment",
-      entityId: pay.payment.id,
-      metadata: {
-        contributionId,
-        groupId: contribution.groupId,
-        paidDayIndex: nextPaid,
-        expectedDayCount: contribution.expectedDayCount,
-        mock: true,
-      },
-    });
-
-    await this.cycleCompliance.syncGroupCompliance(contribution.groupId);
-
-    return pay;
   }
 
   listForGroup(groupId: string, viewer?: { id: string; role: UserRole }) {

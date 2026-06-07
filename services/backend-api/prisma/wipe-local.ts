@@ -44,6 +44,10 @@ async function wipe() {
   logDatabaseUrlHost("[wipe:local]");
 
   await prisma.$transaction([
+    prisma.withdrawalRequest.deleteMany(),
+    prisma.ledgerLine.deleteMany(),
+    prisma.ledgerTransaction.deleteMany(),
+    prisma.ledgerAccount.deleteMany(),
     prisma.paymentRequest.deleteMany(),
     prisma.payment.deleteMany(),
     prisma.contribution.deleteMany(),
@@ -65,14 +69,23 @@ async function wipe() {
     users: await prisma.user.count(),
     groups: await prisma.group.count(),
     payments: await prisma.payment.count(),
-    ledger: await prisma.ledgerEntry.count(),
+    ledgerEntries: await prisma.ledgerEntry.count(),
+    ledgerAccounts: await prisma.ledgerAccount.count(),
+    withdrawals: await prisma.withdrawalRequest.count(),
   };
 
   console.log("[wipe:local] done — remaining rows:", counts);
-  if (counts.users + counts.groups + counts.payments + counts.ledger > 0) {
+  const remaining =
+    counts.users +
+    counts.groups +
+    counts.payments +
+    counts.ledgerEntries +
+    counts.ledgerAccounts +
+    counts.withdrawals;
+  if (remaining > 0) {
     throw new Error("[wipe:local] Wipe incomplete.");
   }
-  console.log("[wipe:local] Run `npm run db:seed:local` and `npm run seed:staging:local` to repopulate demo data.");
+  console.log("[wipe:local] Run `npm run db:seed:local` to restore HQ + admin only.");
 }
 
 wipe()

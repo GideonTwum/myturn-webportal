@@ -25,12 +25,38 @@ function loadPrismaEnv(packageRoot = __dirname) {
     return { railwayPublicLoaded: false };
   }
 
-  const parsed = dotenv.parse(fs.readFileSync(railwayPath, "utf8"));
+  const railwayRaw = fs.readFileSync(railwayPath, "utf8");
+  const dbUrlLines = railwayRaw
+    .split(/\r?\n/)
+    .filter((l) => l.trim().startsWith("DATABASE_URL="));
+  if (dbUrlLines.length > 1) {
+    console.error(
+      "[prisma-cli] Warning: .env.railway-public has multiple DATABASE_URL lines; only the last is used.",
+    );
+  }
+
+  const parsed = dotenv.parse(railwayRaw);
   for (const [key, value] of Object.entries(parsed)) {
     process.env[key] = value;
   }
   assertLaptopReachableDatabaseUrl();
+  ensureRailwayPublicDatabaseSsl();
   return { railwayPublicLoaded: true };
+}
+
+/** Railway public Postgres requires SSL from laptops; Prisma fails without sslmode. */
+function ensureRailwayPublicDatabaseSsl() {
+  const raw = process.env.DATABASE_URL;
+  if (!raw || typeof raw !== "string" || /sslmode=/i.test(raw)) return;
+  try {
+    const host = new URL(raw.trim().replace(/^postgres(ql)?:/i, "http:"))
+      .hostname.toLowerCase();
+    if (host.includes("rlwy.net")) {
+      process.env.DATABASE_URL = `${raw.trim()}${raw.includes("?") ? "&" : "?"}sslmode=require`;
+    }
+  } catch {
+    /* Prisma will surface parse errors */
+  }
 }
 
 /**

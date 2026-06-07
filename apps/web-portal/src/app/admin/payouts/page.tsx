@@ -95,7 +95,7 @@ export default function AdminPayoutsPage() {
       text += "All members have paid for the current cycle.\n\n";
     }
     text +=
-      "MoMo is not integrated — this only records ledger + payout rows for staging.";
+      "MoMo is not integrated for auto-disbursement — cycle credits internal wallets only.";
     return text;
   }, [readiness]);
 
@@ -125,12 +125,9 @@ export default function AdminPayoutsPage() {
     <div className="mx-auto max-w-7xl">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <p className="text-sm text-gray-600">
-          Finalize a cycle after all members have contributed; payout follows turn
-          order.{" "}
-          <span className="font-medium text-gray-800">
-            MoMo integration coming soon
-          </span>
-          — mock payout completion for staging only.
+          Finalize a cycle after all members have contributed. Net payout is{" "}
+          <span className="font-medium text-gray-800">credited to the recipient&apos;s MyTurn wallet</span>
+          ; service margin is split to admin and MyTurn revenue wallets.
         </p>
         <button
           type="button"
@@ -313,7 +310,7 @@ export default function AdminPayoutsPage() {
 
       <ConfirmDialog
         open={confirmOpen}
-        title="Confirm mock payout for this cycle?"
+        title="Finalize cycle and credit wallets?"
         description={confirmBody}
         confirmLabel="Finalize cycle"
         cancelLabel="Cancel"

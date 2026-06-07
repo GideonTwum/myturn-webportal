@@ -9,6 +9,7 @@ import {
   UserCog,
   Users,
   Wallet,
+  ArrowLeftRight,
 } from "lucide-react";
 
 export type NavItem = {
@@ -45,6 +46,8 @@ export const adminNavItems: NavItem[] = [
     section: "Admin",
   },
   { href: "/admin/payouts", label: "Payouts", icon: Wallet, section: "Admin" },
+  { href: "/admin/wallet", label: "Earnings wallet", icon: Wallet, section: "Admin" },
+  { href: "/admin/withdrawals", label: "Withdrawals", icon: ArrowLeftRight, section: "Admin" },
   { href: "/admin/earnings", label: "Earnings", icon: Users, section: "Admin" },
 ];
 
@@ -87,6 +90,24 @@ export const hqNavItems: NavItem[] = [
     section: "MyTurn HQ",
   },
   {
+    href: "/hq/wallets",
+    label: "Platform wallets",
+    icon: Wallet,
+    section: "MyTurn HQ",
+  },
+  {
+    href: "/hq/withdrawals",
+    label: "Withdrawals",
+    icon: ArrowLeftRight,
+    section: "MyTurn HQ",
+  },
+  {
+    href: "/hq/reconciliation",
+    label: "Reconciliation",
+    icon: PieChart,
+    section: "MyTurn HQ",
+  },
+  {
     href: "/hq/settings",
     label: "Settings",
     icon: Settings,
@@ -100,6 +121,8 @@ const ADMIN_TITLES: Record<string, string> = {
   "/admin/create-group": "Create group",
   "/admin/contributions": "Contributions",
   "/admin/payouts": "Payouts",
+  "/admin/wallet": "Earnings wallet",
+  "/admin/withdrawals": "Withdrawals",
   "/admin/earnings": "Earnings",
 };
 
@@ -111,6 +134,9 @@ const HQ_TITLES: Record<string, string> = {
   "/hq/users": "Users",
   "/hq/groups": "Groups",
   "/hq/transactions": "Payments (mock)",
+  "/hq/wallets": "Platform wallets",
+  "/hq/withdrawals": "Withdrawals",
+  "/hq/reconciliation": "Reconciliation",
   "/hq/settings": "Platform settings",
 };
 

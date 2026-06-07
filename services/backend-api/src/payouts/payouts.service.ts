@@ -2,7 +2,6 @@ import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundEx
 import {
   ContributionStatus,
   GroupStatus,
-  LedgerEntryType,
   MemberCycleStanding,
   PayoutMode,
   PayoutStatus,
@@ -15,7 +14,7 @@ import { memberCyclePaymentDays } from "../common/member-cycle-payment-days";
 import { CycleComplianceService } from "../cycle-risk/cycle-compliance.service";
 import { CycleDepositsService } from "../cycle-risk/cycle-deposits.service";
 import { AuditLogsService } from "../audit-logs/audit-logs.service";
-import { LedgerService } from "../ledger/ledger.service";
+import { FinancialAllocationService } from "../ledger-accounts/financial-allocation.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService } from "../prisma/prisma.service";
 
@@ -33,14 +32,14 @@ export class PayoutsService {
 
   constructor(
     private prisma: PrismaService,
-    private ledger: LedgerService,
+    private allocation: FinancialAllocationService,
     private notifications: NotificationsService,
     private audit: AuditLogsService,
     private cycleCompliance: CycleComplianceService,
     private deposits: CycleDepositsService,
   ) {}
 
-  /** Mock/manual settlement: payout + margin + ledger + wallet; advances cycle or completes group. */
+  /** Cycle finalization: wallet credits for recipient, admin earnings, and MyTurn revenue. */
   async finalizeCycle(
     groupId: string,
     cycleNumber: number,
@@ -171,8 +170,9 @@ export class PayoutsService {
             recipientId: recipient.userId,
             cycleNumber,
             amount: payoutAmount,
-            status: PayoutStatus.COMPLETED,
-            paidAt: new Date(),
+            status: PayoutStatus.CREDITED,
+            creditedAt: new Date(),
+            metadata: { walletCredit: true },
           },
         });
 
@@ -188,18 +188,19 @@ export class PayoutsService {
           },
         });
 
-        await this.ledger.record(
-          {
-            type: LedgerEntryType.DEBIT,
-            amount: new Prisma.Decimal(payoutAmount.toString()),
-            groupId,
-            userId: recipient.userId,
-            referenceType: "Payout",
-            referenceId: payoutRow.id,
-            description: `Mock finalize cycle ${cycleNumber}: payout to member (MoMo not integrated)`,
-          },
-          tx,
-        );
+        await this.allocation.allocateCycleFinalizationInTx(tx, {
+          groupId,
+          cycleNumber,
+          payoutId: payoutRow.id,
+          recipientUserId: recipient.userId,
+          adminUserId: group.adminId,
+          contributionPerDay: new Prisma.Decimal(
+            group.contributionAmount.toString(),
+          ),
+          memberCount: n,
+          serviceMarginBps: group.serviceMarginBps,
+          daysPerCycle: memberCyclePaymentDays(group),
+        });
 
         const totalCycles = group.memberSlots;
         let groupCompleted = false;
@@ -257,7 +258,7 @@ export class PayoutsService {
     const payoutAmountNum = Number(payout.amount.toString());
 
     this.logger.log(
-      `[MOCK] cycle finalized groupId=${groupId} cycle=${cycleNumber} payoutId=${payout.id} recipientId=${payout.recipientId} amount=${payoutAmountNum.toFixed(2)} groupCompleted=${groupCompleted}`,
+      `Cycle finalized groupId=${groupId} cycle=${cycleNumber} payoutId=${payout.id} recipientId=${payout.recipientId} amount=${payoutAmountNum.toFixed(2)} walletCredited=true groupCompleted=${groupCompleted}`,
     );
 
     const groupRow = await this.prisma.group.findUnique({
@@ -269,11 +270,18 @@ export class PayoutsService {
     await this.notifications.create(
       payout.recipientId,
       "It's Your Turn!!",
-      `Congratulations! You've received GHS ${payoutAmountNum.toFixed(2)} from ${groupName}.`,
+      `GHS ${payoutAmountNum.toFixed(2)} has been credited to your MyTurn wallet from ${groupName}.`,
       "PAYOUT",
-      { payoutId: payout.id, groupId, amount: payoutAmountNum.toFixed(2) },
+      { payoutId: payout.id, groupId, amount: payoutAmountNum.toFixed(2), walletCredit: true },
     );
     if (groupRow) {
+      await this.notifications.create(
+        groupRow.adminId,
+        "Admin earnings credited",
+        `You earned GHS ${fromMinor(cycleSummary.adminShareMinor).toFixed(2)} from ${groupRow.name} (cycle ${cycleNumber}).`,
+        "ADMIN_EARNINGS",
+        { groupId, cycleNumber, payoutId: payout.id },
+      );
       await this.notifications.create(
         groupRow.adminId,
         "Cycle finalized",
@@ -287,7 +295,7 @@ export class PayoutsService {
 
     await this.audit.append({
       actorId: finalizedByUserId,
-      action: "MOCK_FINALIZE_CYCLE",
+      action: "FINALIZE_CYCLE_WALLET_CREDIT",
       entityType: "Payout",
       entityId: payout.id,
       metadata: {
@@ -295,7 +303,7 @@ export class PayoutsService {
         cycleNumber,
         groupCompleted,
         nextCycle,
-        mock: true,
+        walletCredit: true,
       },
     });
 

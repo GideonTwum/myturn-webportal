@@ -87,8 +87,33 @@ enum PaymentStatus {
 enum PayoutStatus {
   PENDING
   PROCESSING
+  /** Legacy / external disbursement complete */
+  COMPLETED
+  /** Net payout credited to member wallet (MyTurn holds funds) */
+  CREDITED
+  FAILED
+}
+
+enum LedgerAccountType {
+  SYSTEM_EXTERNAL
+  PLATFORM_FLOAT
+  GROUP_POOL
+  MEMBER_WALLET
+  ADMIN_EARNINGS
+  MYTURN_REVENUE
+  WITHDRAWAL_CLEARING
+}
+
+enum WithdrawalStatus {
+  PENDING
+  PROCESSING
   COMPLETED
   FAILED
+}
+
+enum WithdrawalActorRole {
+  MEMBER
+  ADMIN
 }
 
 enum LedgerEntryType {
@@ -287,9 +312,12 @@ model Payout {
   amount      Decimal      @db.Decimal(18, 2)
   status      PayoutStatus @default(PENDING)
   paidAt      DateTime?
+  creditedAt  DateTime?
+  metadata    Json?
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
 
+  @@unique([groupId, cycleNumber])
   @@index([groupId, cycleNumber])
 }
 
@@ -300,8 +328,79 @@ model Wallet {
   balance   Decimal  @default(0) @db.Decimal(18, 2)
   /** Escrow for CYCLE group security deposits (not spendable until released). */
   lockedBalance Decimal @default(0) @db.Decimal(18, 2)
-  currency  String   @default("USD")
+  currency  String   @default("GHS")
   updatedAt DateTime @updatedAt
+}
+
+/** Canonical ledger account — source of truth for wallet-based balances. */
+model LedgerAccount {
+  id          String            @id @default(cuid())
+  accountKey  String            @unique
+  accountType LedgerAccountType
+  userId      String?
+  groupId     String?
+  currency    String            @default("GHS")
+  balance     Decimal           @default(0) @db.Decimal(18, 2)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  lines LedgerLine[]
+
+  @@index([accountType])
+  @@index([userId])
+  @@index([groupId])
+}
+
+/** Balanced financial journal (sum of line deltas must be zero). */
+model LedgerTransaction {
+  id             String   @id @default(cuid())
+  idempotencyKey String   @unique
+  referenceType  String
+  referenceId    String
+  description    String?
+  metadata       Json?
+  createdAt      DateTime @default(now())
+
+  lines LedgerLine[]
+
+  @@index([referenceType, referenceId])
+}
+
+model LedgerLine {
+  id            String          @id @default(cuid())
+  transactionId String
+  transaction   LedgerTransaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  accountId     String
+  account       LedgerAccount   @relation(fields: [accountId], references: [id])
+  /** Signed delta applied to account balance (must sum to 0 per transaction). */
+  delta         Decimal         @db.Decimal(18, 2)
+  balanceAfter  Decimal         @db.Decimal(18, 2)
+  createdAt     DateTime        @default(now())
+
+  @@index([accountId])
+  @@index([transactionId])
+}
+
+model WithdrawalRequest {
+  id            String              @id @default(cuid())
+  actorId       String
+  actorRole     WithdrawalActorRole
+  ledgerAccountId String
+  amount        Decimal             @db.Decimal(18, 2)
+  status        WithdrawalStatus    @default(PENDING)
+  momoNumber    String
+  provider      String?
+  providerRef   String?
+  requestedAt   DateTime            @default(now())
+  processedAt   DateTime?
+  confirmedById String?
+  failureReason String?
+  metadata      Json?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  @@index([actorId, status])
+  @@index([status])
 }
 
 model LedgerEntry {

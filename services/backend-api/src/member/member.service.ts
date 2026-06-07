@@ -124,6 +124,8 @@ export class MemberService {
         paidAt: p.paidAt?.toISOString() ?? null,
         isUpcoming:
           p.status === "PENDING" && p.cycleNumber >= p.group.currentCycle,
+        walletCredited:
+          p.status === "CREDITED" || p.status === "COMPLETED",
       })),
     };
   }
