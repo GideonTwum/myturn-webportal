@@ -40,11 +40,17 @@ export class LedgerPostingService {
       return { transaction: existing, duplicate: true as const };
     }
 
+    const projectedBalances = new Map<string, Prisma.Decimal>();
     for (const line of input.lines) {
       if (line.delta.isZero()) {
         throw new BadRequestException("Ledger line delta cannot be zero");
       }
-      await this.assertNonNegativeAfterDelta(tx, line.accountId, line.delta);
+      await this.assertNonNegativeAfterDelta(
+        tx,
+        line.accountId,
+        line.delta,
+        projectedBalances,
+      );
     }
 
     const transaction = await tx.ledgerTransaction.create({
@@ -152,6 +158,7 @@ export class LedgerPostingService {
     tx: Prisma.TransactionClient,
     accountId: string,
     delta: Prisma.Decimal,
+    projectedBalances?: Map<string, Prisma.Decimal>,
   ) {
     const account = await tx.ledgerAccount.findUniqueOrThrow({
       where: { id: accountId },
@@ -159,11 +166,15 @@ export class LedgerPostingService {
     if (account.accountType === LedgerAccountType.SYSTEM_EXTERNAL) {
       return;
     }
-    const next = new Prisma.Decimal(account.balance.toString()).add(delta);
+    const base =
+      projectedBalances?.get(accountId) ??
+      new Prisma.Decimal(account.balance.toString());
+    const next = base.add(delta);
     if (next.lt(0)) {
       throw new BadRequestException(
         `Insufficient balance on account ${account.accountKey} (would be ${next.toString()})`,
       );
     }
+    projectedBalances?.set(accountId, next);
   }
 }

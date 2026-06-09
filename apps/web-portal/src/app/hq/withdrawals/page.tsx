@@ -14,34 +14,38 @@ export default function HqWithdrawalsPage() {
   const [providerRef, setProviderRef] = useState<Record<string, string>>({});
   const [msg, setMsg] = useState<string | null>(null);
 
-  async function confirm(id: string) {
+  const rows = data?.withdrawals ?? [];
+
+  async function manualOverride(id: string) {
     const ref = providerRef[id]?.trim();
     if (!ref) {
-      setMsg("MoMo reference required to confirm");
+      setMsg("MoMo reference required for manual override");
       return;
     }
     await getMyturnApi().wallet.hqConfirmWithdrawal(id, {
       providerRef: ref,
-      provider: "manual",
+      provider: "manual-override",
     });
-    setMsg(`Withdrawal ${id} confirmed`);
+    setMsg("Manual override applied.");
     void mutate();
   }
 
-  async function fail(id: string) {
+  async function failStuck(id: string) {
     await getMyturnApi().wallet.hqFailWithdrawal(id, {
-      reason: "Could not complete MoMo transfer",
+      reason: "Could not complete MoMo transfer — HQ exception",
     });
+    setMsg("Stuck withdrawal marked as failed.");
     void mutate();
   }
-
-  const rows = data?.withdrawals ?? [];
 
   return (
-    <div className="mx-auto max-w-5xl space-y-4">
-      <h1 className="text-2xl font-semibold text-gray-900">Withdrawal operations</h1>
+    <div className="mx-auto max-w-6xl space-y-4">
+      <h1 className="text-2xl font-semibold text-gray-900">Withdrawal oversight</h1>
       <p className="text-sm text-gray-600">
-        Confirm manual MoMo sends with a provider reference. Do not confirm without external proof.
+        All withdrawals are <span className="font-medium">automatic</span> via MTN
+        disbursement (members and admin earnings). HQ monitors status and handles
+        exceptions only — fail stuck withdrawals or apply a manual override when a
+        provider callback was missed.
       </p>
       {msg ? <p className="text-sm text-green-700">{msg}</p> : null}
       <div className="overflow-x-auto rounded-xl border bg-white">
@@ -49,7 +53,7 @@ export default function HqWithdrawalsPage() {
           <thead className="bg-gray-50 text-left text-gray-600">
             <tr>
               <th className="px-4 py-2">Actor</th>
-              <th className="px-4 py-2">Role</th>
+              <th className="px-4 py-2">Mode</th>
               <th className="px-4 py-2">Amount</th>
               <th className="px-4 py-2">MoMo</th>
               <th className="px-4 py-2">Status</th>
@@ -58,49 +62,64 @@ export default function HqWithdrawalsPage() {
             </tr>
           </thead>
           <tbody>
-            {rows.map((r) => (
-              <tr key={r.id} className="border-t">
-                <td className="px-4 py-2 font-mono text-xs">{r.actorId?.slice(0, 8) ?? r.id.slice(0, 8)}…</td>
-                <td className="px-4 py-2">{r.actorRole ?? "—"}</td>
-                <td className="px-4 py-2">GHS {r.amount}</td>
-                <td className="px-4 py-2">{r.momoNumber}</td>
-                <td className="px-4 py-2">{r.status}</td>
-                <td className="px-4 py-2">
-                  {r.status === "PENDING" || r.status === "PROCESSING" ? (
-                    <input
-                      className="w-40 rounded border px-2 py-1 text-xs"
-                      placeholder="MoMo ref"
-                      value={providerRef[r.id] ?? ""}
-                      onChange={(e) =>
-                        setProviderRef((prev) => ({ ...prev, [r.id]: e.target.value }))
-                      }
-                    />
-                  ) : (
-                    (r.providerRef ?? "—")
-                  )}
-                </td>
-                <td className="px-4 py-2 space-x-2">
-                  {r.status === "PENDING" || r.status === "PROCESSING" ? (
-                    <>
+            {rows.map((r) => {
+              const stuck = r.status === "PROCESSING";
+              const needsAttention = r.isStale || (stuck && r.canManualOverride);
+              return (
+                <tr key={r.id} className="border-t">
+                  <td className="px-4 py-2 font-medium text-gray-900">
+                    {r.actorName ?? "User"}
+                    <span className="ml-2 text-xs text-gray-500">{r.actorRole}</span>
+                    {r.isStale ? (
+                      <span className="ml-2 text-xs font-semibold text-amber-700">
+                        Stuck / Needs attention
+                      </span>
+                    ) : null}
+                  </td>
+                  <td className="px-4 py-2">Automatic</td>
+                  <td className="px-4 py-2">GHS {r.amount}</td>
+                  <td className="px-4 py-2">{r.momoNumber}</td>
+                  <td className="px-4 py-2">{r.status}</td>
+                  <td className="px-4 py-2">
+                    {r.canManualOverride ? (
+                      <input
+                        className="w-40 rounded border px-2 py-1 text-xs"
+                        placeholder="MoMo ref (override)"
+                        value={providerRef[r.id] ?? ""}
+                        onChange={(e) =>
+                          setProviderRef((prev) => ({
+                            ...prev,
+                            [r.id]: e.target.value,
+                          }))
+                        }
+                      />
+                    ) : (
+                      <span className="font-mono text-xs">{r.providerRef ?? "—"}</span>
+                    )}
+                  </td>
+                  <td className="space-x-2 px-4 py-2">
+                    {r.canManualOverride ? (
                       <button
                         type="button"
-                        className="text-brand-green text-xs font-medium"
-                        onClick={() => void confirm(r.id)}
+                        className="text-xs font-medium text-brand-green"
+                        onClick={() => void manualOverride(r.id)}
                       >
-                        Confirm
+                        Manual override
                       </button>
+                    ) : null}
+                    {stuck && r.canManage ? (
                       <button
                         type="button"
-                        className="text-red-600 text-xs"
-                        onClick={() => void fail(r.id)}
+                        className="text-xs text-red-600"
+                        onClick={() => void failStuck(r.id)}
                       >
-                        Fail
+                        Fail stuck
                       </button>
-                    </>
-                  ) : null}
-                </td>
-              </tr>
-            ))}
+                    ) : null}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
         {rows.length === 0 ? (

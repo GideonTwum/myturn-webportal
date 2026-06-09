@@ -3,6 +3,14 @@
  * Single source of truth for staging vs production safety checks.
  */
 
+import {
+  getArkeselReadiness,
+  getMtnCollectionReadiness,
+  getMtnDisbursementReadiness,
+  hasWebhookSecret,
+  isWeakJwtSecret,
+} from "./provider-readiness";
+
 export type DeploymentTier = "local" | "staging" | "production";
 
 export type PlatformFeatureFlags = {
@@ -38,7 +46,7 @@ export function isStagingRelaxTrust(): boolean {
   return !isProductionTier();
 }
 
-/** On-screen OTP in API responses (staging console SMS). Off when Arkesel is live unless forced. */
+/** On-screen OTP in API responses (staging console SMS). Off when Arkesel is enabled unless forced. */
 export function isDebugOtpInResponses(): boolean {
   if (isProductionTier()) return false;
   const explicit = process.env.OTP_DEBUG_IN_RESPONSES?.trim().toLowerCase();
@@ -63,11 +71,9 @@ export function getPlatformFeatureFlags(): PlatformFeatureFlags {
   };
 }
 
-/** Crash startup if production would expose staging-only behavior. */
-export function assertProductionSafety(): void {
-  const tier = getDeploymentTier();
-  if (tier !== "production") return;
-
+/** Collect production safety violations (for tests and startup). */
+export function collectProductionSafetyErrors(): string[] {
+  if (getDeploymentTier() !== "production") return [];
   const errors: string[] = [];
 
   if (process.env.MOCK_PAYMENTS?.trim().toLowerCase() === "true") {
@@ -82,28 +88,78 @@ export function assertProductionSafety(): void {
   if (process.env.MEMBER_PHONE_LOGIN?.trim().toLowerCase() === "true") {
     errors.push("MEMBER_PHONE_LOGIN must not be true in production");
   }
+  if (!process.env.DATABASE_URL?.trim()) {
+    errors.push("DATABASE_URL is required in production");
+  }
   if (!process.env.JWT_SECRET?.trim()) {
     errors.push("JWT_SECRET is required in production");
+  } else if (isWeakJwtSecret(process.env.JWT_SECRET)) {
+    errors.push("JWT_SECRET is too weak or uses a default value");
   }
   if (!process.env.CORS_ORIGIN?.trim()) {
     errors.push("CORS_ORIGIN is required in production");
   }
+  if (!process.env.REDIS_URL?.trim()) {
+    errors.push("REDIS_URL is required in production");
+  }
   if (process.env.OTP_DEBUG_CODES?.trim().toLowerCase() === "true") {
     errors.push("OTP_DEBUG_CODES must not be true in production");
-  }
-  const sms = process.env.SMS_PROVIDER?.trim().toLowerCase() ?? "console";
-  if (sms === "console" || !process.env.SMS_PROVIDER?.trim()) {
-    errors.push("SMS_PROVIDER must not be console in production (use arkesel)");
-  }
-  const payment =
-    process.env.PAYMENT_PROVIDER?.trim().toLowerCase() ?? "mock";
-  if (payment === "mock" || !process.env.PAYMENT_PROVIDER?.trim()) {
-    errors.push("PAYMENT_PROVIDER must not be mock in production");
   }
   if (getPlatformFeatureFlags().debugOtpInResponses) {
     errors.push("Debug OTP in responses must be disabled in production");
   }
 
+  const sms = process.env.SMS_PROVIDER?.trim().toLowerCase() ?? "console";
+  if (sms === "console" || !process.env.SMS_PROVIDER?.trim()) {
+    errors.push("SMS_PROVIDER must not be console in production (use arkesel)");
+  }
+  const arkesel = getArkeselReadiness();
+  if (sms === "arkesel" && !arkesel.configured) {
+    errors.push(
+      `Arkesel credentials missing: ${(arkesel.missing ?? []).join(", ")}`,
+    );
+  }
+
+  const payment =
+    process.env.PAYMENT_PROVIDER?.trim().toLowerCase() ?? "mock";
+  if (payment === "mock" || !process.env.PAYMENT_PROVIDER?.trim()) {
+    errors.push("PAYMENT_PROVIDER must not be mock in production");
+  }
+  const collection = getMtnCollectionReadiness();
+  if (payment.startsWith("mtn") && !collection.configured) {
+    errors.push(
+      `MTN collection credentials missing: ${(collection.missing ?? []).join(", ")}`,
+    );
+  }
+
+  const disbursement =
+    process.env.DISBURSEMENT_PROVIDER?.trim().toLowerCase() ?? "mock";
+  if (disbursement === "mock" || !process.env.DISBURSEMENT_PROVIDER?.trim()) {
+    errors.push("DISBURSEMENT_PROVIDER must not be mock in production");
+  }
+  const disb = getMtnDisbursementReadiness();
+  if (
+    (disbursement === "mtn-momo" || disbursement === "mtn") &&
+    !disb.configured
+  ) {
+    errors.push(
+      `MTN disbursement credentials missing: ${(disb.missing ?? []).join(", ")}`,
+    );
+  }
+
+  if (!hasWebhookSecret()) {
+    errors.push(
+      "WEBHOOK_SECRET or WEBHOOK_SECRET_MTN is required in production",
+    );
+  }
+
+  return errors;
+}
+
+/** Crash startup if production would expose staging-only behavior. */
+export function assertProductionSafety(): void {
+  if (getDeploymentTier() !== "production") return;
+  const errors = collectProductionSafetyErrors();
   if (errors.length > 0) {
     throw new Error(
       `Production safety check failed:\n${errors.map((e) => `  - ${e}`).join("\n")}`,

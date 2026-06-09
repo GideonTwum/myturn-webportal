@@ -1,4 +1,6 @@
 import { Module } from "@nestjs/common";
+import { IdempotencyService } from "../common/idempotency/idempotency.service";
+import { MemberModule } from "../member/member.module";
 import { NotificationsModule } from "../notifications/notifications.module";
 import { AuditLogsModule } from "../audit-logs/audit-logs.module";
 import { LedgerAccountsModule } from "../ledger-accounts/ledger-accounts.module";
@@ -8,15 +10,16 @@ import {
   HqWithdrawalsController,
 } from "./withdrawals.controller";
 import { WithdrawalsService } from "./withdrawals.service";
+import { StaleWithdrawalMonitorJob } from "./stale-withdrawal-monitor.job";
 
 @Module({
-  imports: [LedgerAccountsModule, NotificationsModule, AuditLogsModule],
+  imports: [LedgerAccountsModule, NotificationsModule, AuditLogsModule, MemberModule],
   controllers: [
     MemberWalletController,
     AdminWalletController,
     HqWithdrawalsController,
   ],
-  providers: [WithdrawalsService],
+  providers: [WithdrawalsService, StaleWithdrawalMonitorJob, IdempotencyService],
   exports: [WithdrawalsService],
 })
 export class WithdrawalsModule {}

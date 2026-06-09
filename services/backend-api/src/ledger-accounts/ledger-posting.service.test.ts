@@ -133,6 +133,32 @@ describe("LedgerPostingService", () => {
     expect(accounts.get("a")!.balance.toString()).toBe("100");
   });
 
+  it("allows same-account credit then debit within one balanced journal", async () => {
+    const accounts = new Map([
+      ["ext", makeAccount("ext", "0", LedgerAccountType.SYSTEM_EXTERNAL)],
+      ["float", makeAccount("float", "0", LedgerAccountType.PLATFORM_FLOAT)],
+      ["pool", makeAccount("pool", "0", LedgerAccountType.GROUP_POOL)],
+    ]);
+    const tx = makeTx(accounts);
+    const amount = new Prisma.Decimal("100.00");
+
+    const result = await svc.postJournalInTx(tx as never, {
+      idempotencyKey: "test:contribution",
+      referenceType: "Payment",
+      referenceId: "pay-1",
+      lines: [
+        { accountId: "ext", delta: amount.mul(-1) },
+        { accountId: "float", delta: amount },
+        { accountId: "float", delta: amount.mul(-1) },
+        { accountId: "pool", delta: amount },
+      ],
+    });
+
+    expect(result.duplicate).toBe(false);
+    expect(accounts.get("float")!.balance.toString()).toBe("0");
+    expect(accounts.get("pool")!.balance.toString()).toBe("100");
+  });
+
   it("rejects postings that would make internal accounts negative", async () => {
     const accounts = new Map([
       ["a", makeAccount("a", "10.00", LedgerAccountType.MEMBER_WALLET)],

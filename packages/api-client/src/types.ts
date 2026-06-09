@@ -141,6 +141,8 @@ export type MemberGroupMemberRow = {
   displayName: string;
   turnOrder: number;
   paymentStatus: "PAID" | "PENDING" | "OVERDUE";
+  paidDayCount: number;
+  expectedDayCount: number;
   isYou: boolean;
 };
 

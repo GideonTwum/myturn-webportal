@@ -6,6 +6,7 @@ import { LIVE_POLL_MS, useSWR, useSWRConfig } from "@/lib/swr";
 import { DataTable } from "@/components/dashboard/DataTable";
 import { StatusBadge } from "@/components/dashboard/StatusBadge";
 import { cn } from "@/lib/cn";
+import { memberLabel, type MemberIdentity } from "@/lib/member-label";
 
 type Contrib = {
   id: string;
@@ -15,7 +16,7 @@ type Contrib = {
   amount: string;
   paidDayCount: number;
   expectedDayCount: number;
-  user: { id?: string; email: string };
+  user: MemberIdentity & { id?: string; email?: string };
 };
 
 type GroupMini = { id: string; name: string };
@@ -25,7 +26,12 @@ type PayoutReadiness = {
   groupStatus: string;
   daysPerCycle?: number;
   payoutMode?: "DAILY" | "CYCLE";
-  unpaidMembers: { userId: string; email: string }[];
+  unpaidMembers: (MemberIdentity & {
+    userId: string;
+    turnOrder?: number;
+    paidDayCount?: number;
+    expectedDayCount?: number;
+  })[];
 };
 
 const selectClass = cn(
@@ -164,11 +170,18 @@ export default function AdminContributionsPage() {
           {readiness.unpaidMembers.length > 0 && (
             <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-amber-950">
               <span className="font-bold">
-                Unpaid this cycle ({readiness.unpaidMembers.length})
+                Contributions outstanding ({readiness.unpaidMembers.length})
               </span>
+              <p className="mt-1 text-sm text-amber-900/90">
+                Members still paying into this cycle (includes past payout
+                recipients).
+              </p>
               <ul className="mt-1 list-inside list-disc text-sm">
                 {readiness.unpaidMembers.map((u) => (
-                  <li key={u.userId}>{u.email}</li>
+                  <li key={u.userId}>
+                    {memberLabel(u)} · {u.paidDayCount ?? 0}/
+                    {u.expectedDayCount ?? 1} payments
+                  </li>
                 ))}
               </ul>
             </div>
@@ -189,7 +202,7 @@ export default function AdminContributionsPage() {
           <DataTable<Contrib>
             columns={[
               {
-                key: "email",
+                key: "member",
                 header: "Member",
                 render: (r) => {
                   const uid = r.userId ?? r.user.id ?? "";
@@ -204,10 +217,10 @@ export default function AdminContributionsPage() {
                         showUnpaid ? "text-amber-900" : "text-gray-900",
                       )}
                     >
-                      {r.user.email}
+                      {memberLabel(r.user)}
                       {showUnpaid && (
                         <span className="ml-2 text-xs font-bold uppercase text-amber-700">
-                          Unpaid
+                          Outstanding
                         </span>
                       )}
                     </span>

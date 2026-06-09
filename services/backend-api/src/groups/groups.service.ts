@@ -348,7 +348,8 @@ export class GroupsService {
 
     let expectedPayoutRecipient: {
       userId: string;
-      email: string;
+      firstName: string | null;
+      lastName: string | null;
       turnOrder: number;
     } | null = null;
     if (n > 0 && group.status === GroupStatus.ACTIVE) {
@@ -357,7 +358,8 @@ export class GroupsService {
       if (mem) {
         expectedPayoutRecipient = {
           userId: mem.userId,
-          email: mem.user.email,
+          firstName: mem.user.firstName,
+          lastName: mem.user.lastName,
           turnOrder: mem.turnOrder,
         };
       }
@@ -441,6 +443,8 @@ export class GroupsService {
         name: true,
         currentCycle: true,
         memberSlots: true,
+        payoutMode: true,
+        daysPerCycle: true,
       },
     });
     if (!group) {
@@ -474,11 +478,17 @@ export class GroupsService {
         .join(" ")
         .trim();
 
+      const expectedDayCount =
+        c?.expectedDayCount ?? memberCyclePaymentDays(group);
+      const paidDayCount = c?.paidDayCount ?? 0;
+
       return {
         userId: m.userId,
         displayName: name || "Member",
         turnOrder: m.turnOrder,
         paymentStatus,
+        paidDayCount,
+        expectedDayCount,
         isYou: m.userId === memberUserId,
       };
     });
@@ -1045,7 +1055,8 @@ export class GroupsService {
         const c = byUser.get(m.userId);
         return {
           userId: m.userId,
-          email: m.user.email,
+          firstName: m.user.firstName,
+          lastName: m.user.lastName,
           turnOrder: m.turnOrder,
           cycleStanding: m.cycleStanding,
           depositStatus: m.depositStatus,

@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Headers,
   Post,
   Req,
   UseGuards,
@@ -9,8 +10,10 @@ import {
 import { AuthGuard } from "@nestjs/passport";
 import { UserRole } from "@prisma/client";
 import { ApiWrapped } from "../common/decorators/api-wrapped.decorator";
+import { RequireVerifiedMember } from "../common/decorators/require-verified-member.decorator";
 import { Roles } from "../common/decorators/roles.decorator";
 import { RolesGuard } from "../common/guards/roles.guard";
+import { VerifiedMemberGuard } from "../common/guards/verified-member.guard";
 import { FinancialAllocationService } from "../ledger-accounts/financial-allocation.service";
 import { CreateWithdrawalDto } from "./dto/create-withdrawal.dto";
 import { WithdrawalsService } from "./withdrawals.service";
@@ -19,7 +22,7 @@ type AuthedReq = { user: { sub: string; role: UserRole } };
 
 @ApiWrapped()
 @Controller("member")
-@UseGuards(AuthGuard("jwt"), RolesGuard)
+@UseGuards(AuthGuard("jwt"), RolesGuard, VerifiedMemberGuard)
 @Roles(UserRole.USER)
 export class MemberWalletController {
   constructor(
@@ -38,12 +41,18 @@ export class MemberWalletController {
     return this.allocation.listAccountActivity(summary.accountId);
   }
 
+  @RequireVerifiedMember()
   @Post("withdrawals")
-  create(@Req() req: AuthedReq, @Body() body: CreateWithdrawalDto) {
+  create(
+    @Req() req: AuthedReq,
+    @Body() body: CreateWithdrawalDto,
+    @Headers("x-idempotency-key") idempotencyKey?: string,
+  ) {
     return this.withdrawals.createMemberWithdrawal(
       req.user.sub,
       body.amount,
       body.momoNumber,
+      idempotencyKey,
     );
   }
 

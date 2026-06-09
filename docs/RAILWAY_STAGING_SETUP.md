@@ -69,13 +69,33 @@ SMS_PROVIDER=arkesel
 ARKESEL_API_KEY=...
 ARKESEL_SENDER_ID=...
 
-PAYMENT_PROVIDER=mtn
+PAYMENT_PROVIDER=mtn-momo
 MTN_MOMO_API_KEY=...
 MTN_MOMO_API_USER=...
-MTN_MOMO_API_SECRET=...
 MTN_MOMO_SUBSCRIPTION_KEY=...
 MTN_MOMO_ENVIRONMENT=sandbox
+MTN_MOMO_CALLBACK_HOST=https://YOUR_RAILWAY_DOMAIN
+
+DISBURSEMENT_PROVIDER=mtn-momo
+MTN_MOMO_DISBURSEMENT_SUBSCRIPTION_KEY=...
+MTN_MOMO_DISBURSEMENT_API_USER=...
+MTN_MOMO_DISBURSEMENT_API_KEY=...
+MTN_MOMO_DISBURSEMENT_CALLBACK_HOST=https://YOUR_RAILWAY_DOMAIN
+
+WEBHOOK_SECRET=...
+ENABLE_RECONCILIATION_JOB=true
 ```
+
+Verify readiness:
+
+```bash
+STAGING_API_URL=https://YOUR_RAILWAY_DOMAIN/api npm run test:mtn-collection
+STAGING_API_URL=https://YOUR_RAILWAY_DOMAIN/api npm run test:mtn-disbursement
+```
+
+Health exposes provider status at `GET /api/health` → `infrastructure.payment.collection`, `infrastructure.disbursement`, `infrastructure.sms`.
+
+See **[REAL_MONEY_PILOT_CHECKLIST.md](./REAL_MONEY_PILOT_CHECKLIST.md)** before any real-money pilot.
 
 **Never** set `MOCK_PAYMENTS=true` or `SMS_PROVIDER=console` when `DEPLOYMENT_TIER=production` — startup will crash.
 

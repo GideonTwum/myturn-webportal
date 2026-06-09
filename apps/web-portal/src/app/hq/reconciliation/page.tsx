@@ -41,6 +41,13 @@ export default function HqReconciliationPage() {
         </p>
       ) : null}
 
+      {data?.discrepancies?.length ? null : (
+        <p className="text-xs text-gray-500">
+          Daily snapshots stored for audit. Latest job status appears in API health under{" "}
+          <code className="rounded bg-gray-100 px-1">infrastructure.reconciliation</code>.
+        </p>
+      )}
+
       <div
         className={`flex items-center gap-2 rounded-xl border px-4 py-3 text-sm ${
           ok
@@ -135,6 +142,42 @@ export default function HqReconciliationPage() {
               ? "—"
               : `${money(data?.totalWithdrawalsCompleted)} (${data?.completedWithdrawalsCount ?? 0})`
           }
+          loading={isLoading}
+        />
+        <StatCard
+          icon={Scale}
+          label="Admin withdrawals processing"
+          value={
+            isLoading
+              ? "—"
+              : `${money(data?.adminWithdrawalsProcessing)} (${data?.adminWithdrawalsProcessingCount ?? 0})`
+          }
+          loading={isLoading}
+        />
+        <StatCard
+          icon={Scale}
+          label="Admin withdrawals completed"
+          value={
+            isLoading
+              ? "—"
+              : `${money(data?.adminWithdrawalsCompleted)} (${data?.adminWithdrawalsCompletedCount ?? 0})`
+          }
+          loading={isLoading}
+        />
+        <StatCard
+          icon={Scale}
+          label="Admin withdrawals failed"
+          value={
+            isLoading
+              ? "—"
+              : `${money(data?.adminWithdrawalsFailed)} (${data?.adminWithdrawalsFailedCount ?? 0})`
+          }
+          loading={isLoading}
+        />
+        <StatCard
+          icon={Scale}
+          label="Stale admin processing"
+          value={isLoading ? "—" : String(data?.staleAdminProcessingCount ?? 0)}
           loading={isLoading}
         />
         <StatCard

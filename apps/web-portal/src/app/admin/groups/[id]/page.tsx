@@ -15,6 +15,7 @@ import { getMyturnApi } from "@/lib/myturn-api";
 import { LIVE_POLL_MS, useSWR, useSWRConfig } from "@/lib/swr";
 import { StatusBadge } from "@/components/dashboard/StatusBadge";
 import { cn } from "@/lib/cn";
+import { memberLabel } from "@/lib/member-label";
 
 const inputClass = cn(
   "mt-1 w-full rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900",
@@ -333,11 +334,7 @@ export default function AdminGroupDetailPage() {
                   key={m.userId}
                   className="flex justify-between gap-2 py-2 text-gray-800"
                 >
-                  <span>
-                    {[m.user.firstName, m.user.lastName]
-                      .filter(Boolean)
-                      .join(" ") || m.user.email}
-                  </span>
+                  <span>{memberLabel({ ...m.user, turnOrder: m.turnOrder })}</span>
                   <span className="text-gray-500">Turn {m.turnOrder}</span>
                 </li>
               ))}

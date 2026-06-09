@@ -31,6 +31,8 @@
     "db:wipe:local": "npm run db:wipe:local -w backend-api",
     "db:wipe:staging:railway": "npm run db:wipe:staging:railway -w backend-api",
     "test:e2e-staging": "node scripts/e2e-staging-smoke.mjs",
+    "test:mtn-collection": "node scripts/test-mtn-collection-sandbox.mjs",
+    "test:mtn-disbursement": "node scripts/test-mtn-disbursement-sandbox.mjs",
     "test:e2e-playwright": "playwright test -c e2e/playwright/playwright.config.ts",
     "test:backend-infra": "npm run test -w backend-api",
     "ci:verify-seed": "node scripts/verify-staging-seed.mjs",

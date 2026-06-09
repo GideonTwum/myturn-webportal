@@ -84,7 +84,10 @@ export default function WalletScreen() {
       <Text style={styles.section}>Withdraw to MoMo</Text>
       <PremiumCard variant="flat">
         <Text style={styles.hint}>
-          Withdrawals are processed manually during beta. You will be notified when sent.
+          {withdrawals.data?.disbursementMode === "mock-disbursement" ||
+          withdrawals.data?.disbursementMode === "mock"
+            ? "Simulated MoMo withdrawal — no real money sent."
+            : "Your withdrawal is sent to your MoMo wallet automatically. Daily limits apply."}
         </Text>
         <TextInput
           style={styles.input}
@@ -104,7 +107,7 @@ export default function WalletScreen() {
         />
         {error ? <Text style={styles.error}>{error}</Text> : null}
         <GradientButton
-          label={createWithdrawal.isPending ? "Submitting…" : "Request withdrawal"}
+          label={createWithdrawal.isPending ? "Processing…" : "Withdraw to MoMo"}
           onPress={onWithdraw}
           disabled={createWithdrawal.isPending}
         />
@@ -120,7 +123,14 @@ export default function WalletScreen() {
               GHS {wd.amount} → {wd.momoNumber}
             </Text>
             <Text style={styles.activityMeta}>
-              {wd.status} · {new Date(wd.requestedAt).toLocaleString()}
+              {wd.status === "COMPLETED"
+                ? `GHS ${wd.amount} sent to your MoMo wallet`
+                : wd.status === "FAILED"
+                  ? "Withdrawal failed — funds returned to wallet"
+                  : wd.status === "PROCESSING"
+                    ? "Processing automatically…"
+                    : wd.status}{" "}
+              · {new Date(wd.requestedAt).toLocaleString()}
             </Text>
           </PremiumCard>
         ))

@@ -18,4 +18,14 @@ export class ReconciliationSummaryController {
     void _req;
     return this.summary.getSummary();
   }
+
+  @Get("latest")
+  async getLatest(@Req() _req: ReqUser) {
+    void _req;
+    const latest = await this.summary.getLatestSnapshot();
+    if (!latest) {
+      return { status: "no_snapshots", message: "No daily snapshots yet" };
+    }
+    return latest;
+  }
 }

@@ -47,7 +47,12 @@ export const adminNavItems: NavItem[] = [
   },
   { href: "/admin/payouts", label: "Payouts", icon: Wallet, section: "Admin" },
   { href: "/admin/wallet", label: "Earnings wallet", icon: Wallet, section: "Admin" },
-  { href: "/admin/withdrawals", label: "Withdrawals", icon: ArrowLeftRight, section: "Admin" },
+  {
+    href: "/admin/withdrawals",
+    label: "Member withdrawals",
+    icon: ArrowLeftRight,
+    section: "Admin",
+  },
   { href: "/admin/earnings", label: "Earnings", icon: Users, section: "Admin" },
 ];
 
@@ -122,7 +127,7 @@ const ADMIN_TITLES: Record<string, string> = {
   "/admin/contributions": "Contributions",
   "/admin/payouts": "Payouts",
   "/admin/wallet": "Earnings wallet",
-  "/admin/withdrawals": "Withdrawals",
+  "/admin/withdrawals": "Member withdrawals",
   "/admin/earnings": "Earnings",
 };
 

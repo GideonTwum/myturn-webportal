@@ -104,11 +104,12 @@ export default function HqWalletsPage() {
 
       <div className="rounded-xl border bg-white p-4 text-sm text-gray-600">
         <p>
-          Process pending withdrawals on{" "}
-          <Link href="/hq/withdrawals" className="font-medium text-brand-green">
-            Withdrawal operations
-          </Link>
-          . Confirm only after external MoMo proof.
+          Member and admin earnings withdrawals are automatic via MTN disbursement.
+          HQ monitors{" "}
+          <a href="/hq/withdrawals" className="font-medium text-brand-green">
+            withdrawal status
+          </a>{" "}
+          and platform balances here.
         </p>
       </div>
     </div>

@@ -1,4 +1,5 @@
 import { Injectable } from "@nestjs/common";
+import { WithdrawalStatus } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { pingRedis } from "../common/redis-connection.util";
 import { pingArkesel } from "../auth/otp/arkesel-sms.provider";
@@ -7,11 +8,20 @@ import {
   createPaymentProvider,
   pingPaymentProvider,
 } from "../payments/providers/placeholder-providers";
+import { createDisbursementProvider } from "../withdrawals/providers/create-disbursement-provider";
+import { pingDisbursementProvider } from "../withdrawals/providers/ping-disbursement-provider";
+import {
+  getArkeselReadiness,
+  getMtnCollectionReadiness,
+  getMtnDisbursementReadiness,
+  hasWebhookSecret,
+} from "../common/provider-readiness";
 import {
   getPlatformFeatureFlags,
   getPublicApiBaseUrl,
   getDeploymentTier,
 } from "../common/platform-env";
+import { getStaleWithdrawalThresholdMs } from "../withdrawals/withdrawal-limits";
 
 @Injectable()
 export class HealthService {
@@ -46,20 +56,63 @@ export class HealthService {
       checks.notifications = "error";
     }
 
+    const collectionReadiness = getMtnCollectionReadiness();
+    const disbursementReadiness = getMtnDisbursementReadiness();
+    const arkeselReadiness = getArkeselReadiness();
     const smsProvider = process.env.SMS_PROVIDER?.trim().toLowerCase() ?? "console";
     const smsHealth =
-      smsProvider === "arkesel" ? await pingArkesel() : "ok";
+      smsProvider === "arkesel" ? await pingArkesel() : arkeselReadiness.health;
     const paymentHealth = await pingPaymentProvider();
+    const disbursementHealth = await pingDisbursementProvider();
     const paymentProviderName = createPaymentProvider().name;
+    const disbursementProviderName = createDisbursementProvider().name;
     const reconciliationEnabled =
       process.env.ENABLE_RECONCILIATION_JOB?.trim() !== "false";
 
+    const staleThresholdMs = getStaleWithdrawalThresholdMs();
+    const staleCutoff = new Date(Date.now() - staleThresholdMs);
+    const staleProcessingCount = await this.prisma.withdrawalRequest.count({
+      where: {
+        status: WithdrawalStatus.PROCESSING,
+        requestedAt: { lt: staleCutoff },
+      },
+    });
+
+    let latestReconciliation: {
+      status: string;
+      discrepancyCount: number;
+      createdAt: string;
+    } | null = null;
+    try {
+      const snap = await this.prisma.reconciliationSnapshot.findFirst({
+        orderBy: { createdAt: "desc" },
+        select: { status: true, discrepancyCount: true, createdAt: true },
+      });
+      if (snap) {
+        latestReconciliation = {
+          status: snap.status,
+          discrepancyCount: snap.discrepancyCount,
+          createdAt: snap.createdAt.toISOString(),
+        };
+      }
+    } catch {
+      latestReconciliation = null;
+    }
+
     const stagingSeed = await this.checkStagingSeed();
+
+    const providerDegraded =
+      (collectionReadiness.provider !== "mock" &&
+        collectionReadiness.health !== "ok") ||
+      (disbursementReadiness.provider !== "mock-disbursement" &&
+        disbursementReadiness.health !== "ok") ||
+      (smsProvider === "arkesel" && smsHealth !== "ok");
 
     const degraded =
       Object.entries(checks).some(([, v]) => v === "error") ||
-      smsHealth === "error" ||
-      paymentHealth === "error";
+      providerDegraded ||
+      staleProcessingCount > 0 ||
+      latestReconciliation?.status === "discrepancies_detected";
 
     return {
       status: degraded ? "degraded" : "ok",
@@ -85,20 +138,41 @@ export class HealthService {
         sms: {
           provider: smsProvider,
           health: smsHealth,
+          configured: arkeselReadiness.configured,
+          ...(arkeselReadiness.missing ? { missing: arkeselReadiness.missing } : {}),
         },
         payment: {
           provider: paymentProviderName,
           health: paymentHealth,
+          collection: collectionReadiness,
+        },
+        disbursement: {
+          provider: disbursementProviderName,
+          health: disbursementHealth,
+          readiness: disbursementReadiness,
         },
         webhooks: {
           signatureVerification: true,
           replayProtection: "idempotency",
-          health: "ok",
+          secretConfigured: hasWebhookSecret(),
+          health: hasWebhookSecret() || tier !== "production" ? "ok" : "unconfigured",
+        },
+        withdrawals: {
+          staleProcessingCount,
+          staleThresholdMinutes: Math.round(staleThresholdMs / 60_000),
+          monitorSchedule: "*/5 * * * *",
         },
         reconciliation: {
           enabled: reconciliationEnabled,
-          schedule: "*/30 * * * *",
-          health: reconciliationEnabled ? "ok" : "disabled",
+          paymentPollSchedule: "*/30 * * * *",
+          dailySnapshotSchedule: "0 2 * * *",
+          health:
+            latestReconciliation?.status === "discrepancies_detected"
+              ? "discrepancies_detected"
+              : reconciliationEnabled
+                ? "ok"
+                : "disabled",
+          latest: latestReconciliation,
         },
         idempotency: redisUrl ? "redis" : "memory",
         redis: {

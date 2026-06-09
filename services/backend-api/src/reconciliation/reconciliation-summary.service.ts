@@ -3,6 +3,7 @@ import {
   LedgerAccountType,
   PayoutStatus,
   Prisma,
+  WithdrawalActorRole,
   WithdrawalStatus,
 } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
@@ -14,6 +15,20 @@ export class ReconciliationSummaryService {
     private prisma: PrismaService,
     private accounts: LedgerAccountService,
   ) {}
+
+  async getLatestSnapshot() {
+    const snap = await this.prisma.reconciliationSnapshot.findFirst({
+      orderBy: { createdAt: "desc" },
+    });
+    if (!snap) return null;
+    return {
+      id: snap.id,
+      status: snap.status,
+      discrepancyCount: snap.discrepancyCount,
+      summary: snap.summary,
+      createdAt: snap.createdAt.toISOString(),
+    };
+  }
 
   async getSummary() {
     const platformFloat = await this.accounts.getOrCreatePlatformFloat();
@@ -44,10 +59,112 @@ export class ReconciliationSummaryService {
       _count: { id: true },
     });
 
+    const memberProcessing = await this.prisma.withdrawalRequest.aggregate({
+      where: {
+        actorRole: WithdrawalActorRole.MEMBER,
+        status: WithdrawalStatus.PROCESSING,
+      },
+      _sum: { amount: true },
+      _count: { id: true },
+    });
+
+    const memberCompleted = await this.prisma.withdrawalRequest.aggregate({
+      where: {
+        actorRole: WithdrawalActorRole.MEMBER,
+        status: WithdrawalStatus.COMPLETED,
+      },
+      _sum: { amount: true },
+      _count: { id: true },
+    });
+
+    const memberFailed = await this.prisma.withdrawalRequest.aggregate({
+      where: {
+        actorRole: WithdrawalActorRole.MEMBER,
+        status: WithdrawalStatus.FAILED,
+      },
+      _sum: { amount: true },
+      _count: { id: true },
+    });
+
+    const adminProcessing = await this.prisma.withdrawalRequest.aggregate({
+      where: {
+        actorRole: WithdrawalActorRole.ADMIN,
+        status: WithdrawalStatus.PROCESSING,
+      },
+      _sum: { amount: true },
+      _count: { id: true },
+    });
+
+    const adminCompleted = await this.prisma.withdrawalRequest.aggregate({
+      where: {
+        actorRole: WithdrawalActorRole.ADMIN,
+        status: WithdrawalStatus.COMPLETED,
+      },
+      _sum: { amount: true },
+      _count: { id: true },
+    });
+
+    const adminFailed = await this.prisma.withdrawalRequest.aggregate({
+      where: {
+        actorRole: WithdrawalActorRole.ADMIN,
+        status: WithdrawalStatus.FAILED,
+      },
+      _sum: { amount: true },
+      _count: { id: true },
+    });
+
     const completedWithdrawals = await this.prisma.withdrawalRequest.aggregate({
       where: { status: WithdrawalStatus.COMPLETED },
       _sum: { amount: true },
       _count: { id: true },
+    });
+
+    const staleThreshold = new Date(Date.now() - 30 * 60 * 1000);
+    const staleMemberProcessingCount = await this.prisma.withdrawalRequest.count({
+      where: {
+        actorRole: WithdrawalActorRole.MEMBER,
+        status: WithdrawalStatus.PROCESSING,
+        requestedAt: { lt: staleThreshold },
+      },
+    });
+
+    const staleAdminProcessingCount = await this.prisma.withdrawalRequest.count({
+      where: {
+        actorRole: WithdrawalActorRole.ADMIN,
+        status: WithdrawalStatus.PROCESSING,
+        requestedAt: { lt: staleThreshold },
+      },
+    });
+
+    const adminCompletedWithoutRef = await this.prisma.withdrawalRequest.count({
+      where: {
+        actorRole: WithdrawalActorRole.ADMIN,
+        status: WithdrawalStatus.COMPLETED,
+        OR: [{ providerRef: null }, { providerRef: "" }],
+      },
+    });
+
+    const memberHeldInClearing = await this.prisma.withdrawalRequest.aggregate({
+      where: {
+        actorRole: WithdrawalActorRole.MEMBER,
+        status: { in: [WithdrawalStatus.PENDING, WithdrawalStatus.PROCESSING] },
+      },
+      _sum: { amount: true },
+    });
+
+    const adminHeldInClearing = await this.prisma.withdrawalRequest.aggregate({
+      where: {
+        actorRole: WithdrawalActorRole.ADMIN,
+        status: { in: [WithdrawalStatus.PENDING, WithdrawalStatus.PROCESSING] },
+      },
+      _sum: { amount: true },
+    });
+
+    const failedWithoutRelease = await this.prisma.withdrawalRequest.count({
+      where: {
+        status: WithdrawalStatus.FAILED,
+        processedAt: { not: null },
+      },
     });
 
     const adminEarningsRecorded = await this.prisma.adminEarning.aggregate({
@@ -113,6 +230,39 @@ export class ReconciliationSummaryService {
     if (completedWithoutRef > 0) {
       discrepancies.push(
         `${completedWithoutRef} completed withdrawal(s) missing providerRef`,
+      );
+    }
+
+    if (staleMemberProcessingCount > 0) {
+      discrepancies.push(
+        `${staleMemberProcessingCount} member withdrawal(s) stuck in PROCESSING (>30m)`,
+      );
+    }
+
+    if (staleAdminProcessingCount > 0) {
+      discrepancies.push(
+        `${staleAdminProcessingCount} admin earnings withdrawal(s) stuck in PROCESSING (>30m)`,
+      );
+    }
+
+    if (adminCompletedWithoutRef > 0) {
+      discrepancies.push(
+        `${adminCompletedWithoutRef} completed admin withdrawal(s) missing providerRef`,
+      );
+    }
+
+    const memberHeldAmount = memberHeldInClearing._sum.amount ?? new Prisma.Decimal(0);
+    const adminHeldAmount = adminHeldInClearing._sum.amount ?? new Prisma.Decimal(0);
+    const expectedClearingHeld = memberHeldAmount.add(adminHeldAmount);
+    if (expectedClearingHeld.sub(clearingBalance).abs().gt(new Prisma.Decimal("0.01"))) {
+      discrepancies.push(
+        `Withdrawal clearing balance ${clearingBalance} mismatches held withdrawals ${expectedClearingHeld} (member=${memberHeldAmount}, admin=${adminHeldAmount})`,
+      );
+    }
+
+    if (clearingBalance.gt(0) && pendingWithdrawals._count.id === 0) {
+      discrepancies.push(
+        `Withdrawal clearing has balance ${clearingBalance} but no pending/processing withdrawals`,
       );
     }
 
@@ -196,6 +346,27 @@ export class ReconciliationSummaryService {
       totalWithdrawalsCompleted:
         completedWithdrawals._sum.amount?.toFixed(2) ?? "0.00",
       completedWithdrawalsCount: completedWithdrawals._count.id,
+      memberWithdrawalsProcessing:
+        memberProcessing._sum.amount?.toFixed(2) ?? "0.00",
+      memberWithdrawalsProcessingCount: memberProcessing._count.id,
+      memberWithdrawalsCompleted:
+        memberCompleted._sum.amount?.toFixed(2) ?? "0.00",
+      memberWithdrawalsCompletedCount: memberCompleted._count.id,
+      memberWithdrawalsFailed:
+        memberFailed._sum.amount?.toFixed(2) ?? "0.00",
+      memberWithdrawalsFailedCount: memberFailed._count.id,
+      staleMemberProcessingCount: staleMemberProcessingCount,
+      adminWithdrawalsProcessing:
+        adminProcessing._sum.amount?.toFixed(2) ?? "0.00",
+      adminWithdrawalsProcessingCount: adminProcessing._count.id,
+      adminWithdrawalsCompleted:
+        adminCompleted._sum.amount?.toFixed(2) ?? "0.00",
+      adminWithdrawalsCompletedCount: adminCompleted._count.id,
+      adminWithdrawalsFailed:
+        adminFailed._sum.amount?.toFixed(2) ?? "0.00",
+      adminWithdrawalsFailedCount: adminFailed._count.id,
+      staleAdminProcessingCount,
+      failedWithdrawalsWithoutReleaseCount: failedWithoutRelease,
       adminEarningsRecorded: adminEarningsRecorded._sum.adminShareAmount?.toFixed(2) ?? "0.00",
       platformRevenueRecorded:
         adminEarningsRecorded._sum.platformShareAmount?.toFixed(2) ?? "0.00",

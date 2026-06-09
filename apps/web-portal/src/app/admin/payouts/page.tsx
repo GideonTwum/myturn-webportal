@@ -7,6 +7,7 @@ import { ConfirmDialog } from "@/components/dashboard/ConfirmDialog";
 import { DataTable } from "@/components/dashboard/DataTable";
 import { StatusBadge } from "@/components/dashboard/StatusBadge";
 import { cn } from "@/lib/cn";
+import { memberLabel, type MemberIdentity } from "@/lib/member-label";
 
 type PayoutRow = {
   id: string;
@@ -32,16 +33,16 @@ type PayoutReadiness = {
   complianceBlocksPayout?: boolean;
   recipientDefaultBlocked?: boolean;
   hasDefaultedMembers?: boolean;
-  unpaidMembers: {
+  unpaidMembers: (MemberIdentity & {
     userId: string;
-    email: string;
     turnOrder: number;
-  }[];
-  expectedPayoutRecipient: {
+    paidDayCount?: number;
+    expectedDayCount?: number;
+  })[];
+  expectedPayoutRecipient: (MemberIdentity & {
     userId: string;
-    email: string;
     turnOrder: number;
-  } | null;
+  }) | null;
   canFinalize: boolean;
   payoutForCurrentCycleExists: boolean;
   allContributionsPaidForCurrentCycle: boolean;
@@ -87,12 +88,17 @@ export default function AdminPayoutsPage() {
     const unpaid = readiness.unpaidMembers;
     let text = "";
     if (r) {
-      text += `Payout will go to member ${r.email} (turn order ${r.turnOrder}).\n\n`;
+      text += `Payout will go to ${memberLabel(r)} (turn order ${r.turnOrder}).\n\n`;
     }
     if (unpaid.length > 0) {
-      text += `Unpaid members (${unpaid.length}): ${unpaid.map((u) => u.email).join(", ")}. Finalize is blocked until all pay.\n\n`;
+      text += `Outstanding contributions (${unpaid.length}): ${unpaid
+        .map(
+          (u) =>
+            `${memberLabel(u)} (${u.paidDayCount ?? 0}/${u.expectedDayCount ?? 1})`,
+        )
+        .join(", ")}. Finalize is blocked until every member completes this cycle.\n\n`;
     } else {
-      text += "All members have paid for the current cycle.\n\n";
+      text += "All members have completed contributions for the current cycle.\n\n";
     }
     text +=
       "MoMo is not integrated for auto-disbursement — cycle credits internal wallets only.";
@@ -220,22 +226,34 @@ export default function AdminPayoutsPage() {
           </p>
           {readiness.expectedPayoutRecipient && (
             <div className="rounded-xl border border-brand-green/30 bg-brand-green-soft/50 px-4 py-3 text-sm">
-              <span className="font-semibold text-brand-green-dark">
-                Current payout recipient:
-              </span>{" "}
-              {readiness.expectedPayoutRecipient.email} (turn order{" "}
-              {readiness.expectedPayoutRecipient.turnOrder})
+              <p>
+                <span className="font-semibold text-brand-green-dark">
+                  This cycle&apos;s payout recipient:
+                </span>{" "}
+                {memberLabel(readiness.expectedPayoutRecipient)} (roster #
+                {readiness.expectedPayoutRecipient.turnOrder})
+              </p>
+              <p className="mt-1 text-brand-green-dark/80">
+                Credited after every member finishes contributing this cycle —
+                not the same as who still owes payments.
+              </p>
             </div>
           )}
           {readiness.unpaidMembers.length > 0 && (
             <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-              <span className="font-bold">Unpaid ({readiness.unpaidMembers.length})</span>
+              <span className="font-bold">
+                Contributions outstanding ({readiness.unpaidMembers.length})
+              </span>
+              <p className="mt-1 text-amber-900/90">
+                Every member pays into each cycle, including those who already
+                received a payout in a previous cycle.
+              </p>
               <ul className="mt-2 list-inside list-disc">
                 {readiness.unpaidMembers.map((u) => (
                   <li key={u.userId}>
-                    {u.email}{" "}
+                    {memberLabel(u)}{" "}
                     <span className="text-amber-800/80">
-                      (turn {u.turnOrder})
+                      · {u.paidDayCount ?? 0}/{u.expectedDayCount ?? 1} payments
                     </span>
                   </li>
                 ))}
@@ -246,7 +264,7 @@ export default function AdminPayoutsPage() {
             readiness.groupStatus === "ACTIVE" &&
             !readiness.payoutForCurrentCycleExists && (
               <p className="text-sm font-medium text-green-800">
-                All members paid — you can finalize this cycle.
+                All contributions complete — you can finalize this cycle.
               </p>
             )}
         </div>

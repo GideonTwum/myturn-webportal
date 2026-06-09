@@ -10,6 +10,7 @@ import { getDeploymentTier } from "../common/platform-env";
 import { IdempotencyService } from "../common/idempotency/idempotency.service";
 import { createPaymentProvider } from "../payments/providers/placeholder-providers";
 import { PaymentRequestsService } from "../payment-requests/payment-requests.service";
+import { WithdrawalsService } from "../withdrawals/withdrawals.service";
 import { verifyWebhookSignature } from "./webhook-signature";
 
 export type InboundWebhook = {
@@ -28,6 +29,7 @@ export class WebhooksService {
     private idempotency: IdempotencyService,
     @Inject(forwardRef(() => PaymentRequestsService))
     private paymentRequests: PaymentRequestsService,
+    private withdrawals: WithdrawalsService,
   ) {}
 
   async processInbound(payload: InboundWebhook) {
@@ -74,7 +76,15 @@ export class WebhooksService {
       async () => {
         let settlement: { settled: boolean; status?: string } | null = null;
         const providerNorm = payload.provider.trim().toLowerCase();
-        if (providerNorm === "mtn" || providerNorm.startsWith("mtn-")) {
+        if (
+          providerNorm === "mtn-disbursement" ||
+          providerNorm === "mtn-disburse"
+        ) {
+          settlement = await this.applyMtnDisbursementWebhook(
+            payload.body,
+            correlationId,
+          );
+        } else if (providerNorm === "mtn" || providerNorm.startsWith("mtn-")) {
           settlement = await this.applyMtnWebhook(payload.body, correlationId);
         }
 
@@ -111,6 +121,33 @@ export class WebhooksService {
     }
 
     return result.value;
+  }
+
+  private async applyMtnDisbursementWebhook(
+    body: Record<string, unknown>,
+    correlationId: string,
+  ) {
+    const ref = String(
+      correlationId ||
+        body.externalId ||
+        body.referenceId ||
+        body.externalRef ||
+        "",
+    ).trim();
+    const result = await this.withdrawals.applyDisbursementWebhook(
+      body,
+      "mtn-disbursement",
+    );
+    if (!ref || !result.settled) {
+      return { settled: false };
+    }
+    return {
+      settled: true,
+      status:
+        "status" in result && result.status
+          ? String(result.status)
+          : "settled",
+    };
   }
 
   private async applyMtnWebhook(

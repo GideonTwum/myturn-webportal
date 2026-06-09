@@ -19,6 +19,7 @@ import { FinancialAllocationService } from "../ledger-accounts/financial-allocat
 import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { MemberParticipationService } from "../member/member-participation.service";
+import { isLivePaymentProvider } from "../common/provider-readiness";
 
 export type ContributionSettlementOptions = {
   provider?: string;
@@ -90,6 +91,29 @@ export class PaymentsService {
       throw new BadRequestException(
         "All required payments for this cycle are already recorded",
       );
+    }
+
+    if (isLivePaymentProvider() && options.mock) {
+      throw new BadRequestException(
+        "Mock contribution payments are disabled when PAYMENT_PROVIDER is live MTN",
+      );
+    }
+    if (!options.mock && isLivePaymentProvider()) {
+      if (!options.externalRef?.trim()) {
+        throw new BadRequestException(
+          "externalRef is required for live MoMo contribution settlement",
+        );
+      }
+      if (!options.paymentRequestId?.trim()) {
+        throw new BadRequestException(
+          "paymentRequestId is required for live MoMo contribution settlement",
+        );
+      }
+      if (!options.provider?.trim()) {
+        throw new BadRequestException(
+          "provider is required for live MoMo contribution settlement",
+        );
+      }
     }
 
     const dailyAmount = new Prisma.Decimal(

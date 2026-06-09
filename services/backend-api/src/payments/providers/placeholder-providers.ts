@@ -1,3 +1,4 @@
+import { getMtnCollectionReadiness } from "../../common/provider-readiness";
 import type { PaymentProvider } from "./payment-provider.interface";
 import { MockPaymentProvider } from "./mock-payment.provider";
 import { MtnMomoSandboxProvider } from "./mtn-momo-sandbox.provider";
@@ -33,14 +34,5 @@ export function createPaymentProvider(): PaymentProvider {
 export async function pingPaymentProvider(): Promise<
   "ok" | "unconfigured" | "error"
 > {
-  const name = process.env.PAYMENT_PROVIDER?.trim().toLowerCase() ?? "mock";
-  if (name === "mock") return "ok";
-  if (name.startsWith("mtn")) {
-    const has =
-      process.env.MTN_MOMO_SUBSCRIPTION_KEY?.trim() &&
-      process.env.MTN_MOMO_API_USER?.trim() &&
-      process.env.MTN_MOMO_API_KEY?.trim();
-    return has ? "ok" : "unconfigured";
-  }
-  return "unconfigured";
+  return getMtnCollectionReadiness().health;
 }

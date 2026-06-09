@@ -490,6 +490,16 @@ model PaymentRequest {
   @@index([contributionId])
 }
 
+model ReconciliationSnapshot {
+  id               String   @id @default(cuid())
+  status           String
+  discrepancyCount Int      @default(0)
+  summary          Json
+  createdAt        DateTime @default(now())
+
+  @@index([createdAt])
+}
+
 model Setting {
   id        String   @id @default(cuid())
   key       String   @unique

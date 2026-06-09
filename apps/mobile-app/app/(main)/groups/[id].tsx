@@ -220,25 +220,32 @@ export default function GroupDetailScreen() {
                 <Text style={styles.memberDetail}>
                   {IS_MOCK_UI ? ("detail" in m ? m.detail : "") : `Cycle ${membersQuery.data?.currentCycle ?? "—"}`}
                 </Text>
+                {!IS_MOCK_UI && "paidDayCount" in m ? (
+                  <Text style={styles.memberProgress}>
+                    {m.paidDayCount}/{m.expectedDayCount}
+                  </Text>
+                ) : null}
               </View>
-              <View
-                style={[
-                  styles.status,
-                  paid ? styles.statusPaid : overdue ? styles.statusOverdue : styles.statusPending,
-                ]}
-              >
-                <Text
+              <View style={styles.statusCol}>
+                <View
                   style={[
-                    styles.statusText,
-                    paid
-                      ? styles.statusTextPaid
-                      : overdue
-                        ? styles.statusTextOverdue
-                        : styles.statusTextPending,
+                    styles.status,
+                    paid ? styles.statusPaid : overdue ? styles.statusOverdue : styles.statusPending,
                   ]}
                 >
-                  {paid ? "Paid" : overdue ? "Overdue" : "Pending"}
-                </Text>
+                  <Text
+                    style={[
+                      styles.statusText,
+                      paid
+                        ? styles.statusTextPaid
+                        : overdue
+                          ? styles.statusTextOverdue
+                          : styles.statusTextPending,
+                    ]}
+                  >
+                    {paid ? "Paid" : overdue ? "Overdue" : "Pending"}
+                  </Text>
+                </View>
               </View>
             </View>
           </PremiumCard>
@@ -360,6 +367,13 @@ const styles = StyleSheet.create({
   memberInitial: { fontFamily: fonts.label, fontSize: 16, color: tokens.colors.onSecondaryFixed },
   memberName: { fontFamily: fonts.label, fontSize: 15, color: tokens.colors.onSurface },
   memberDetail: { fontFamily: fonts.bodyMedium, fontSize: 12, color: tokens.colors.onSurfaceVariant },
+  memberProgress: {
+    fontFamily: fonts.label,
+    fontSize: 12,
+    color: tokens.colors.primary,
+    marginTop: 2,
+  },
+  statusCol: { alignItems: "flex-end" },
   status: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: tokens.radius.pill },
   statusPaid: { backgroundColor: tokens.colors.primaryFixedDim + "33" },
   statusPending: { backgroundColor: tokens.colors.surfaceContainer },

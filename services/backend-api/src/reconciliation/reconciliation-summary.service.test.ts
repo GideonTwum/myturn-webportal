@@ -16,6 +16,7 @@ describe("ReconciliationSummaryService", () => {
     adminEarning: { aggregate: vi.fn() },
     payout: { groupBy: vi.fn(), findMany: vi.fn() },
     ledgerTransaction: { findMany: vi.fn() },
+    reconciliationSnapshot: { findFirst: vi.fn().mockResolvedValue(null) },
     $queryRaw: vi.fn(),
   };
 
@@ -36,6 +37,7 @@ describe("ReconciliationSummaryService", () => {
     prisma.ledgerAccount.findMany.mockResolvedValue([]);
     prisma.payment.aggregate.mockResolvedValue({ _sum: { amount: new Prisma.Decimal("500") } });
     prisma.withdrawalRequest.aggregate.mockResolvedValue({ _sum: { amount: null }, _count: { id: 0 } });
+    prisma.withdrawalRequest.count.mockResolvedValue(0);
     prisma.adminEarning.aggregate.mockResolvedValue({
       _sum: {
         marginAmount: new Prisma.Decimal("100"),
@@ -71,9 +73,17 @@ describe("ReconciliationSummaryService", () => {
   });
 
   it("flags completed withdrawals missing providerRef", async () => {
-    prisma.withdrawalRequest.count.mockResolvedValue(2);
+    prisma.withdrawalRequest.count.mockImplementation(({ where }: { where?: { status?: string; actorRole?: string; requestedAt?: unknown; OR?: unknown } }) => {
+      if (where && "OR" in where && where.actorRole === "ADMIN") return 1;
+      if (where && "OR" in where) return 2;
+      if (where?.status === "PROCESSING" && where.actorRole === "ADMIN") return 2;
+      if (where?.status === "PROCESSING") return 1;
+      return 0;
+    });
 
     const summary = await svc.getSummary();
     expect(summary.discrepancies.some((d) => d.includes("providerRef"))).toBe(true);
+    expect(summary.staleMemberProcessingCount).toBe(1);
+    expect(summary.staleAdminProcessingCount).toBe(2);
   });
 });

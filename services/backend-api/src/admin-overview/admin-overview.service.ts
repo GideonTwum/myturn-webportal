@@ -71,7 +71,7 @@ export class AdminOverviewService {
             : {};
         const memberName = p.user
           ? [p.user.firstName, p.user.lastName].filter(Boolean).join(" ").trim() ||
-            p.user.email
+            "Member"
           : null;
         return {
           id: p.id,
