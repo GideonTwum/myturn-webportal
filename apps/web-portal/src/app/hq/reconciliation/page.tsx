@@ -102,14 +102,26 @@ export default function HqReconciliationPage() {
         />
         <StatCard
           icon={Scale}
-          label="Member wallet liabilities"
+          label="Member wallet (available)"
+          value={isLoading ? "—" : money(data?.memberWalletAvailable)}
+          loading={isLoading}
+        />
+        <StatCard
+          icon={Scale}
+          label="Member wallet (reserved)"
+          value={isLoading ? "—" : money(data?.memberWalletReserved)}
+          loading={isLoading}
+        />
+        <StatCard
+          icon={Scale}
+          label="Member wallet liabilities (total)"
           value={isLoading ? "—" : money(data?.memberWalletLiabilities)}
           loading={isLoading}
         />
         <StatCard
           icon={Scale}
-          label="Admin earnings liabilities"
-          value={isLoading ? "—" : money(data?.adminEarningsLiabilities)}
+          label="Legacy admin earnings (deprecated)"
+          value={isLoading ? "—" : money(data?.legacyAdminEarningsLiabilities ?? data?.adminEarningsLiabilities)}
           loading={isLoading}
         />
         <StatCard
@@ -182,8 +194,14 @@ export default function HqReconciliationPage() {
         />
         <StatCard
           icon={Scale}
-          label="Admin earnings recorded"
-          value={isLoading ? "—" : money(data?.adminEarningsRecorded)}
+          label="Legacy admin earnings recorded"
+          value={
+            isLoading
+              ? "—"
+              : money(
+                  data?.legacyAdminEarningsRecorded ?? data?.adminEarningsRecorded,
+                )
+          }
           loading={isLoading}
         />
         <StatCard

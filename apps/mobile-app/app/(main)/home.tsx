@@ -23,6 +23,9 @@ import {
 } from "@/hooks/useMemberQueries";
 import { mockActivities } from "@/mock-data";
 import { useDemoOptional } from "@/providers/DemoProvider";
+import { AuthPromptModal } from "@/components/guest/AuthPromptModal";
+import { GuestHome } from "@/components/guest/GuestHome";
+import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { useAuth } from "@/providers/AuthProvider";
 import { tokens } from "@/constants/tokens";
 import { fonts } from "@/constants/typography";
@@ -30,10 +33,36 @@ import { fonts } from "@/constants/typography";
 export default function HomeScreen() {
   const router = useRouter();
   const demo = useDemoOptional();
-  const { user: authUser, token } = useAuth();
-  const trustQuery = useTrustProfile(Boolean(token) && !IS_MOCK_UI);
-  const groupsQuery = useMemberGroups(Boolean(token) && !IS_MOCK_UI);
-  const notificationsQuery = useMemberNotifications(Boolean(token) && !IS_MOCK_UI);
+  const { user: authUser } = useAuth();
+  const {
+    isAuthenticated,
+    promptVisible,
+    closePrompt,
+    startAuth,
+    requireAuth,
+    onLogin,
+    onSignUp,
+  } = useRequireAuth();
+  const trustQuery = useTrustProfile(isAuthenticated && !IS_MOCK_UI);
+  const groupsQuery = useMemberGroups(isAuthenticated && !IS_MOCK_UI);
+  const notificationsQuery = useMemberNotifications(isAuthenticated && !IS_MOCK_UI);
+
+  if (!isAuthenticated) {
+    return (
+      <>
+        <GuestHome
+          onLogin={() => void startAuth("login")}
+          onSignUp={() => void startAuth("signup")}
+        />
+        <AuthPromptModal
+          visible={promptVisible}
+          onClose={closePrompt}
+          onLogin={onLogin}
+          onSignUp={onSignUp}
+        />
+      </>
+    );
+  }
 
   const primaryGroup = groupsQuery.data?.memberships[0];
   const unread = (notificationsQuery.data?.notifications ?? []).filter((n) => !n.read).length;
@@ -62,6 +91,7 @@ export default function HomeScreen() {
     : "Join a group to track cycle progress";
 
   function contribute() {
+    if (!requireAuth("/payment")) return;
     if (IS_MOCK_UI) {
       router.push("/payment");
       return;
@@ -86,7 +116,12 @@ export default function HomeScreen() {
       header={
         <GlassHeader
           right={
-            <ScalePressable onPress={() => router.push("/notifications")} style={styles.bellBtn}>
+            <ScalePressable
+              onPress={() => {
+                if (requireAuth("/notifications")) router.push("/notifications");
+              }}
+              style={styles.bellBtn}
+            >
               <PremiumIcon icon={Bell} size="lg" color={tokens.colors.onSurface} />
               {unread > 0 ? (
                 <View style={styles.badge}>
@@ -208,6 +243,12 @@ export default function HomeScreen() {
       )}
 
       <GradientButton label="Contribute via MoMo" onPress={contribute} style={{ marginTop: 8 }} />
+      <AuthPromptModal
+        visible={promptVisible}
+        onClose={closePrompt}
+        onLogin={onLogin}
+        onSignUp={onSignUp}
+      />
       <Text style={styles.ctaHint}>
         {IS_MOCK_UI
           ? "UI-only demo"

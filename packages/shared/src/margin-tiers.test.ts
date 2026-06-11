@@ -73,8 +73,8 @@ describe("computeGroupFinancePreview with dynamic margin", () => {
     expect(r.preview.serviceMarginBps).toBe(500);
     expect(r.preview.serviceMarginPerCycle).toBe(25);
     expect(r.preview.payoutAmountPerCycle).toBe(475);
-    expect(r.preview.adminEarningPerCycle).toBe(15);
-    expect(r.preview.myTurnEarningPerCycle).toBe(10);
+    expect(r.preview.adminEarningPerCycle).toBe(0);
+    expect(r.preview.myTurnEarningPerCycle).toBe(25);
   });
 
   it("CYCLE mode: gross includes daysPerCycle", () => {

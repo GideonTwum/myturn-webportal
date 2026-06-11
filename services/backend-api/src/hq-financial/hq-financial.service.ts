@@ -8,7 +8,10 @@ import {
   UserRole,
 } from "@prisma/client";
 import { Decimal } from "@prisma/client/runtime/library";
-import { getFixedGroupFinancePlatformSettings } from "@myturn/shared";
+import {
+  getFixedGroupFinancePlatformSettings,
+  MYTURN_REVENUE_PERCENTAGE,
+} from "@myturn/shared";
 import { PrismaService } from "../prisma/prisma.service";
 import {
   HqEarningsBreakdownQueryDto,
@@ -92,18 +95,27 @@ export class HqFinancialService {
         }),
       ]);
 
+    const legacyAdmin = marginAgg._sum.adminShareAmount ?? new Decimal(0);
+
     return {
+      marginModel: "myturn-100",
       totalServiceMarginGhs: decStr(marginAgg._sum.marginAmount),
-      totalMyTurnEarningsGhs: decStr(marginAgg._sum.platformShareAmount),
-      totalAdminEarningsGhs: decStr(marginAgg._sum.adminShareAmount),
+      totalMyTurnRevenueGhs: decStr(marginAgg._sum.platformShareAmount),
       myturnRevenueWalletBalanceGhs: decStr(revenueAccount?.balance),
+      legacyAdminEarningsGhs: decStr(legacyAdmin),
       completedPayoutsCount: payoutCompletedCount,
       totalPaidToMembersGhs: decStr(payoutCompletedAgg._sum.amount),
       platformSplits: {
-        adminSharePercentage: platform.adminSplitPercentage,
-        myTurnSharePercentage: platform.myTurnSplitPercentage,
+        myTurnRevenuePercentage: MYTURN_REVENUE_PERCENTAGE,
         serviceMarginPercentage: platform.serviceMarginPercentage,
+        /** @deprecated Always 0 after wallet simplification. */
+        adminSharePercentage: 0,
+        myTurnSharePercentage: MYTURN_REVENUE_PERCENTAGE,
       },
+      /** @deprecated Use totalMyTurnRevenueGhs */
+      totalMyTurnEarningsGhs: decStr(marginAgg._sum.platformShareAmount),
+      /** @deprecated Legacy historical admin share only — not active revenue. */
+      totalAdminEarningsGhs: decStr(legacyAdmin),
     };
   }
 
@@ -168,6 +180,7 @@ export class HqFinancialService {
         total: 0,
         page,
         pageSize,
+        marginModel: "myturn-100",
       };
     }
 
@@ -214,20 +227,32 @@ export class HqFinancialService {
 
     const items = slice.map((row) => {
       const g = row.groupId ? gMap.get(row.groupId) : undefined;
+      const legacyAdmin = decStr(row._sum.adminShareAmount);
+      const myturnRevenue = decStr(row._sum.platformShareAmount);
+      const base = {
+        serviceMarginTotalGhs: decStr(row._sum.marginAmount),
+        myTurnRevenueTotalGhs: myturnRevenue,
+        legacyAdminShareTotalGhs: legacyAdmin,
+        completedCycles: row._count.id,
+        totalMyTurnRevenueGhs: myturnRevenue,
+        legacyAdminEarningsGhs: legacyAdmin,
+        /** @deprecated Legacy historical only */
+        adminShareTotalGhs: legacyAdmin,
+        myTurnShareTotalGhs: myturnRevenue,
+        totalAdminEarningsGhs: legacyAdmin,
+        totalMyTurnEarningsGhs: myturnRevenue,
+      };
+
       if (!g) {
         return {
           groupId: row.groupId,
           groupName: "—",
+          operatorName: "—",
           adminName: "—",
           contributionAmountGhs: "0.00",
           groupSize: 0,
           totalCollectedPerCycleGhs: "0.00",
-          serviceMarginTotalGhs: decStr(row._sum.marginAmount),
-          adminShareTotalGhs: decStr(row._sum.adminShareAmount),
-          myTurnShareTotalGhs: decStr(row._sum.platformShareAmount),
-          completedCycles: row._count.id,
-          totalAdminEarningsGhs: decStr(row._sum.adminShareAmount),
-          totalMyTurnEarningsGhs: decStr(row._sum.platformShareAmount),
+          ...base,
         };
       }
 
@@ -240,20 +265,16 @@ export class HqFinancialService {
       return {
         groupId: g.id,
         groupName: g.name,
+        operatorName: displayName(g.admin),
         adminName: displayName(g.admin),
         contributionAmountGhs: contrib.toFixed(2),
         groupSize: n,
         totalCollectedPerCycleGhs: totalCollected.toFixed(2),
-        serviceMarginTotalGhs: decStr(row._sum.marginAmount),
-        adminShareTotalGhs: decStr(row._sum.adminShareAmount),
-        myTurnShareTotalGhs: decStr(row._sum.platformShareAmount),
-        completedCycles: row._count.id,
-        totalAdminEarningsGhs: decStr(row._sum.adminShareAmount),
-        totalMyTurnEarningsGhs: decStr(row._sum.platformShareAmount),
+        ...base,
       };
     });
 
-    return { items, total, page, pageSize };
+    return { items, total, page, pageSize, marginModel: "myturn-100" };
   }
 
   async getPayoutHistory(q: HqPayoutHistoryQueryDto) {
@@ -352,22 +373,28 @@ export class HqFinancialService {
       const e = earningMap.get(earnKey(p.groupId, p.cycleNumber));
       const turnOrder =
         turnMap.get(turnKey(p.groupId, p.recipientId)) ?? null;
+      const legacyAdmin = e ? decStr(e.adminShareAmount) : "—";
+      const myturnRevenue = e ? decStr(e.platformShareAmount) : "—";
       return {
         payoutId: p.id,
         memberName: displayName(p.recipient),
         groupName: p.group.name,
+        operatorName: displayName(p.group.admin),
         adminName: displayName(p.group.admin),
         payoutPosition: turnOrder,
         cycleNumber: p.cycleNumber,
         payoutAmountGhs: decStr(p.amount),
         serviceMarginGhs: e ? decStr(e.marginAmount) : "—",
-        adminShareGhs: e ? decStr(e.adminShareAmount) : "—",
-        myTurnShareGhs: e ? decStr(e.platformShareAmount) : "—",
+        myTurnRevenueGhs: myturnRevenue,
+        legacyAdminShareGhs: legacyAdmin,
+        /** @deprecated Legacy historical only */
+        adminShareGhs: legacyAdmin,
+        myTurnShareGhs: myturnRevenue,
         payoutDate: p.paidAt?.toISOString() ?? p.updatedAt.toISOString(),
         status: p.status,
       };
     });
 
-    return { items, total, page, pageSize };
+    return { items, total, page, pageSize, marginModel: "myturn-100" };
   }
 }

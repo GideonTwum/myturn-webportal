@@ -1,5 +1,6 @@
 import {
   ADMIN_SHARE_PERCENTAGE,
+  MYTURN_REVENUE_PERCENTAGE,
   MYTURN_SHARE_PERCENTAGE,
   SERVICE_MARGIN_PERCENTAGE,
 } from "./constants";
@@ -61,7 +62,7 @@ export type GroupFinancePreviewInput = {
   startDate: string;
   /**
    * Optional. When omitted, {@link getFixedGroupFinancePlatformSettings} is used
-   * for the 60/40 margin split only.
+   * (100% MyTurn margin revenue).
    */
   platformSettings?: GroupFinancePlatformSettings;
   /**

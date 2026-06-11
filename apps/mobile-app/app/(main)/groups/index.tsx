@@ -9,9 +9,12 @@ import {
   PremiumCard,
   PremiumScreen,
 } from "@/components/premium";
+import { AuthPromptModal } from "@/components/guest/AuthPromptModal";
+import { GuestGroups } from "@/components/guest/GuestGroups";
 import { PremiumIcon } from "@/components/icons/PremiumIcon";
 import { IS_MOCK_UI } from "@/constants/app-mode";
 import { formatGhs, healthScoreFromProgress } from "@/lib/format-money";
+import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { useMemberGroups } from "@/hooks/useMemberQueries";
 import { mockActiveGroup, mockInviteGroup } from "@/mock-data";
 import { tokens } from "@/constants/tokens";
@@ -19,17 +22,42 @@ import { fonts } from "@/constants/typography";
 
 export default function GroupsScreen() {
   const router = useRouter();
-  const { data, isLoading } = useMemberGroups(!IS_MOCK_UI);
+  const {
+    isAuthenticated,
+    promptVisible,
+    closePrompt,
+    requireAuth,
+    startAuth,
+    onLogin,
+    onSignUp,
+  } = useRequireAuth();
+  const { data, isLoading } = useMemberGroups(isAuthenticated && !IS_MOCK_UI);
 
-  const mockGroups = [mockActiveGroup, mockInviteGroup];
-  const apiGroups = data?.memberships ?? [];
   const goToJoin = () => {
+    if (!requireAuth("/invite")) return;
     if (IS_MOCK_UI) {
       router.push("/invite/DEMO2024");
       return;
     }
     router.push("/invite");
   };
+
+  if (!isAuthenticated) {
+    return (
+      <>
+        <GuestGroups onJoin={() => void startAuth("signup", "/invite")} />
+        <AuthPromptModal
+          visible={promptVisible}
+          onClose={closePrompt}
+          onLogin={onLogin}
+          onSignUp={onSignUp}
+        />
+      </>
+    );
+  }
+
+  const mockGroups = [mockActiveGroup, mockInviteGroup];
+  const apiGroups = data?.memberships ?? [];
 
   const groups = IS_MOCK_UI
     ? mockGroups.map((g) => ({
@@ -101,6 +129,12 @@ export default function GroupsScreen() {
           </Pressable>
         </>
       )}
+      <AuthPromptModal
+        visible={promptVisible}
+        onClose={closePrompt}
+        onLogin={onLogin}
+        onSignUp={onSignUp}
+      />
     </PremiumScreen>
   );
 }

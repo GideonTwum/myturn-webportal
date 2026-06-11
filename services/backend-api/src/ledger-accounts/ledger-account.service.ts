@@ -5,7 +5,9 @@ import {
   adminEarningsKey,
   DEFAULT_CURRENCY,
   groupPoolKey,
+  memberWalletAvailableKey,
   memberWalletKey,
+  memberWalletReservedKey,
   myturnRevenueKey,
   platformFloatKey,
   systemExternalKey,
@@ -72,6 +74,33 @@ export class LedgerAccountService {
     );
   }
 
+  async getOrCreateMemberWalletAvailable(
+    userId: string,
+    tx?: Tx,
+    currency = DEFAULT_CURRENCY,
+  ) {
+    return this.getOrCreateByKey(
+      memberWalletAvailableKey(userId, currency),
+      LedgerAccountType.MEMBER_WALLET_AVAILABLE,
+      { userId, currency },
+      tx,
+    );
+  }
+
+  async getOrCreateMemberWalletReserved(
+    userId: string,
+    tx?: Tx,
+    currency = DEFAULT_CURRENCY,
+  ) {
+    return this.getOrCreateByKey(
+      memberWalletReservedKey(userId, currency),
+      LedgerAccountType.MEMBER_WALLET_RESERVED,
+      { userId, currency },
+      tx,
+    );
+  }
+
+  /** @deprecated LEGACY_ADMIN_EARNINGS — no new allocations after wallet simplification. */
   async getOrCreateAdminEarnings(userId: string, tx?: Tx, currency = DEFAULT_CURRENCY) {
     return this.getOrCreateByKey(
       adminEarningsKey(userId, currency),

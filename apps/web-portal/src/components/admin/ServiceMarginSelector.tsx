@@ -133,7 +133,7 @@ export function ServiceMarginSelector({
       </p>
       <p className="mt-1 text-xs text-brand-green-dark">{recommendedLabel}</p>
       <p className="mt-0.5 text-xs text-gray-500">
-        Margin split fixed: 60% admin / 40% MyTurn HQ (of margin only).
+        Service margin revenue goes 100% to MyTurn (admins are platform operators).
       </p>
 
       <div className="mt-4">

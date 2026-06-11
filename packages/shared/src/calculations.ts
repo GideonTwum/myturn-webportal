@@ -1,4 +1,4 @@
-import { ADMIN_MARGIN_SHARE_BPS, BPS_DENOMINATOR } from "./constants";
+import { PLATFORM_MARGIN_SHARE_BPS, BPS_DENOMINATOR } from "./constants";
 import type { CycleSummary } from "./enums";
 
 function assertNonNegative(n: bigint, name: string) {
@@ -38,15 +38,18 @@ export function marginFromGrossMinor(
   return (grossMinor * BigInt(marginBps)) / BigInt(BPS_DENOMINATOR);
 }
 
-/** Split margin using {@link ADMIN_MARGIN_SHARE_BPS} / {@link BPS_DENOMINATOR} (fixed MVP: 60/40). */
+/**
+ * Split margin: 100% MyTurn revenue. Admin share is always 0.
+ * {@link adminShareMinor} retained for API/ledger compatibility.
+ */
 export function splitMarginMinor(marginMinor: bigint): {
   adminShareMinor: bigint;
   platformShareMinor: bigint;
 } {
   assertNonNegative(marginMinor, "marginMinor");
-  const adminShareMinor =
-    (marginMinor * BigInt(ADMIN_MARGIN_SHARE_BPS)) / BigInt(BPS_DENOMINATOR);
-  const platformShareMinor = marginMinor - adminShareMinor;
+  const adminShareMinor = 0n;
+  const platformShareMinor =
+    (marginMinor * BigInt(PLATFORM_MARGIN_SHARE_BPS)) / BigInt(BPS_DENOMINATOR);
   return { adminShareMinor, platformShareMinor };
 }
 

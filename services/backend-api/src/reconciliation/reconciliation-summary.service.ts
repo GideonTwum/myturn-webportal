@@ -35,10 +35,21 @@ export class ReconciliationSummaryService {
     const myturnRevenue = await this.accounts.getOrCreateMyturnRevenue();
     const clearing = await this.accounts.getOrCreateWithdrawalClearing();
 
-    const memberWallets = await this.prisma.ledgerAccount.aggregate({
-      where: { accountType: LedgerAccountType.MEMBER_WALLET },
-      _sum: { balance: true },
-    });
+    const [memberAvailable, memberReserved, legacyMemberWallets] =
+      await Promise.all([
+        this.prisma.ledgerAccount.aggregate({
+          where: { accountType: LedgerAccountType.MEMBER_WALLET_AVAILABLE },
+          _sum: { balance: true },
+        }),
+        this.prisma.ledgerAccount.aggregate({
+          where: { accountType: LedgerAccountType.MEMBER_WALLET_RESERVED },
+          _sum: { balance: true },
+        }),
+        this.prisma.ledgerAccount.aggregate({
+          where: { accountType: LedgerAccountType.MEMBER_WALLET },
+          _sum: { balance: true },
+        }),
+      ]);
     const adminWallets = await this.prisma.ledgerAccount.aggregate({
       where: { accountType: LedgerAccountType.ADMIN_EARNINGS },
       _sum: { balance: true },
@@ -172,14 +183,24 @@ export class ReconciliationSummaryService {
     });
 
     const platformBalance = new Prisma.Decimal(platformFloat.balance.toString());
-    const memberLiabilities = memberWallets._sum.balance ?? new Prisma.Decimal(0);
+    const memberAvailableLiabilities =
+      memberAvailable._sum.balance ?? new Prisma.Decimal(0);
+    const memberReservedLiabilities =
+      memberReserved._sum.balance ?? new Prisma.Decimal(0);
+    const legacyMemberLiabilities =
+      legacyMemberWallets._sum.balance ?? new Prisma.Decimal(0);
+    const memberLiabilities = memberAvailableLiabilities
+      .add(memberReservedLiabilities)
+      .add(legacyMemberLiabilities);
     const adminLiabilities = adminWallets._sum.balance ?? new Prisma.Decimal(0);
     const revenueBalance = new Prisma.Decimal(myturnRevenue.balance.toString());
     const groupPoolBalance = groupPools._sum.balance ?? new Prisma.Decimal(0);
     const clearingBalance = new Prisma.Decimal(clearing.balance.toString());
 
-    const totalWalletLiabilities = memberLiabilities
-      .add(adminLiabilities)
+    // Float ≈ Group Pools + Member Available + Member Reserved + MyTurn Revenue + Clearing
+    const totalWalletLiabilities = memberAvailableLiabilities
+      .add(memberReservedLiabilities)
+      .add(legacyMemberLiabilities)
       .add(revenueBalance)
       .add(groupPoolBalance)
       .add(clearingBalance);
@@ -187,13 +208,31 @@ export class ReconciliationSummaryService {
     const discrepancies: string[] = [];
 
     const marginRecorded = adminEarningsRecorded._sum.marginAmount ?? new Prisma.Decimal(0);
-    const marginInRevenueWallets = adminLiabilities.add(revenueBalance);
+    const marginInRevenueWallets = revenueBalance;
     if (
       marginRecorded.gt(0) &&
       marginInRevenueWallets.sub(marginRecorded).abs().gt(new Prisma.Decimal("0.05"))
     ) {
       discrepancies.push(
-        `AdminEarning margin total (${marginRecorded}) differs from wallet margin balances (${marginInRevenueWallets})`,
+        `Recorded margin total (${marginRecorded}) differs from MyTurn revenue wallet (${marginInRevenueWallets})`,
+      );
+    }
+
+    if (adminLiabilities.gt(new Prisma.Decimal("0.01"))) {
+      discrepancies.push(
+        `Legacy ADMIN_EARNINGS balance ${adminLiabilities} — should not grow after wallet simplification`,
+      );
+    }
+
+    const recentAdminShare = await this.prisma.adminEarning.count({
+      where: {
+        adminShareAmount: { gt: 0 },
+        settledAt: { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) },
+      },
+    });
+    if (recentAdminShare > 0) {
+      discrepancies.push(
+        `${recentAdminShare} AdminEarning row(s) with non-zero admin share in last 7 days (unexpected)`,
       );
     }
 
@@ -337,6 +376,9 @@ export class ReconciliationSummaryService {
       platformFloat: platformBalance.toFixed(2),
       groupPoolTotal: groupPoolBalance.toFixed(2),
       memberWalletLiabilities: memberLiabilities.toFixed(2),
+      memberWalletAvailable: memberAvailableLiabilities.toFixed(2),
+      memberWalletReserved: memberReservedLiabilities.toFixed(2),
+      /** @deprecated Use legacyAdminEarningsLiabilities — not part of active liability formula. */
       adminEarningsLiabilities: adminLiabilities.toFixed(2),
       myturnRevenueBalance: revenueBalance.toFixed(2),
       withdrawalClearing: clearingBalance.toFixed(2),
@@ -367,9 +409,17 @@ export class ReconciliationSummaryService {
       adminWithdrawalsFailedCount: adminFailed._count.id,
       staleAdminProcessingCount,
       failedWithdrawalsWithoutReleaseCount: failedWithoutRelease,
-      adminEarningsRecorded: adminEarningsRecorded._sum.adminShareAmount?.toFixed(2) ?? "0.00",
+      legacyAdminEarningsLiabilities: adminLiabilities.toFixed(2),
+      legacyAdminEarningsRecorded:
+        adminEarningsRecorded._sum.adminShareAmount?.toFixed(2) ?? "0.00",
+      /** @deprecated Use legacyAdminEarningsRecorded */
+      adminEarningsRecorded:
+        adminEarningsRecorded._sum.adminShareAmount?.toFixed(2) ?? "0.00",
       platformRevenueRecorded:
-        adminEarningsRecorded._sum.platformShareAmount?.toFixed(2) ?? "0.00",
+        adminEarningsRecorded._sum.platformShareAmount?.toFixed(2) ??
+        adminEarningsRecorded._sum.marginAmount?.toFixed(2) ??
+        "0.00",
+      marginModel: "myturn-100",
       discrepancies,
     };
   }

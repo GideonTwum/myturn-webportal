@@ -1,102 +1,79 @@
 "use client";
 
-import {
-  ADMIN_MARGIN_SHARE_BPS,
-  PLATFORM_MARGIN_SHARE_BPS,
-} from "@myturn/shared";
-import { LIVE_POLL_MS, useSWR } from "@/lib/swr";
-import { DataTable } from "@/components/dashboard/DataTable";
+import useSWR from "swr";
+import Link from "next/link";
+import { formatGhs } from "@myturn/shared";
+import { swrFetcher } from "@/lib/swr";
 
-type Earning = {
+type EarningRow = {
   id: string;
-  cycleNumber: number | null;
+  groupId: string;
+  cycleNumber: number;
+  marginAmount: string;
   adminShareAmount: string;
   platformShareAmount: string;
-  marginAmount: string;
-  group: { name: string } | null;
+  settledAt: string;
+  group?: { name: string };
 };
 
-export default function AdminEarningsPage() {
-  const { data: rows, error: err, isLoading: loading } = useSWR<Earning[]>(
+type EarningsResponse = { earnings: EarningRow[] };
+
+/** Legacy margin records — admin share no longer allocated. */
+export default function AdminEarningsLegacyPage() {
+  const { data, isLoading } = useSWR<EarningsResponse>(
     "/admin-earnings/mine",
-    { refreshInterval: LIVE_POLL_MS },
+    swrFetcher,
   );
+  const rows = data?.earnings ?? [];
+  const hasLegacy = rows.some((r) => Number(r.adminShareAmount) > 0);
 
   return (
-    <div className="mx-auto max-w-7xl">
-      <p className="max-w-2xl text-sm text-gray-600">
-        Your share of the service margin per finalized cycle. Platform rule:{" "}
-        <span className="font-semibold text-brand-gold-dark">
-          {ADMIN_MARGIN_SHARE_BPS / 100}% Admin
-        </span>
-        ,{" "}
-        <span className="font-semibold text-blue-700">
-          {PLATFORM_MARGIN_SHARE_BPS / 100}% MyTurn HQ
-        </span>{" "}
-        (applied to margin only).
-      </p>
-      {err && (
-        <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {err instanceof Error ? err.message : "Failed"}
+    <div className="mx-auto max-w-4xl space-y-6">
+      <div>
+        <h1 className="text-2xl font-semibold text-gray-900">Legacy earnings data</h1>
+        <p className="mt-2 text-sm text-gray-600">
+          Admin margin share is deprecated. Service margin is now 100% MyTurn
+          revenue. Historical records below are read-only.
         </p>
-      )}
-      <div className="mt-6">
-        {loading ? (
-          <div className="space-y-3">
-            {[1, 2, 3].map((i) => (
-              <div
-                key={i}
-                className="h-20 animate-pulse rounded-xl bg-gray-200/80"
-              />
-            ))}
-          </div>
-        ) : (
-          <DataTable<Earning>
-            columns={[
-              {
-                key: "group",
-                header: "Group / cycle",
-                render: (r) => (
-                  <div>
-                    <p className="font-medium text-gray-900">
-                      {r.group?.name ?? "—"}
-                    </p>
-                    <p className="text-xs text-gray-500">
-                      Cycle {r.cycleNumber ?? "—"}
-                    </p>
-                  </div>
-                ),
-              },
-              {
-                key: "marginAmount",
-                header: "Margin",
-                render: (r) => <span>GHS {r.marginAmount}</span>,
-              },
-              {
-                key: "adminShareAmount",
-                header: "Your earnings",
-                render: (r) => (
-                  <span className="font-semibold text-brand-gold-dark">
-                    GHS {r.adminShareAmount}
-                  </span>
-                ),
-              },
-              {
-                key: "platformShareAmount",
-                header: "MyTurn HQ",
-                render: (r) => (
-                  <span className="font-medium text-blue-700">
-                    GHS {r.platformShareAmount}
-                  </span>
-                ),
-              },
-            ]}
-            rows={rows ?? []}
-            rowKey={(r) => r.id}
-            emptyMessage="No earnings yet — finalize a group cycle with all contributions paid."
-          />
-        )}
       </div>
+
+      {!hasLegacy && !isLoading ? (
+        <p className="rounded-xl border bg-white p-6 text-sm text-gray-600">
+          No legacy admin earnings on record.{" "}
+          <Link href="/admin" className="font-medium text-brand-green">
+            Return to dashboard
+          </Link>
+        </p>
+      ) : (
+        <div className="overflow-x-auto rounded-xl border bg-white">
+          <table className="min-w-full text-sm">
+            <thead className="bg-gray-50 text-left text-gray-600">
+              <tr>
+                <th className="px-4 py-2">Group</th>
+                <th className="px-4 py-2">Cycle</th>
+                <th className="px-4 py-2">Margin</th>
+                <th className="px-4 py-2">Legacy admin share</th>
+                <th className="px-4 py-2">MyTurn share</th>
+                <th className="px-4 py-2">Settled</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.id} className="border-t">
+                  <td className="px-4 py-2">{r.group?.name ?? r.groupId}</td>
+                  <td className="px-4 py-2">{r.cycleNumber}</td>
+                  <td className="px-4 py-2">{formatGhs(Number(r.marginAmount))}</td>
+                  <td className="px-4 py-2">{formatGhs(Number(r.adminShareAmount))}</td>
+                  <td className="px-4 py-2">{formatGhs(Number(r.platformShareAmount))}</td>
+                  <td className="px-4 py-2">
+                    {new Date(r.settledAt).toLocaleDateString()}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

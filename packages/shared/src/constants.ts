@@ -1,16 +1,19 @@
 /**
- * Revenue rules — margin split fixed in code; service margin % is pool-tiered per group.
- * Not editable via MyTurn HQ (staging-safe). MoMo integration is out of scope for MVP.
+ * Revenue rules — service margin % is pool-tiered per group.
+ * Margin revenue is 100% MyTurn platform revenue (admins are operational, not beneficiaries).
  */
 
 /** Recommended default service margin when the pool tier allows (e.g. 10 = 10%). */
 export const SERVICE_MARGIN_PERCENTAGE = 10;
 
-/** Admin’s share of the service margin (% of margin, not of gross). */
-export const ADMIN_SHARE_PERCENTAGE = 60;
+/** MyTurn receives 100% of service margin revenue. */
+export const MYTURN_REVENUE_PERCENTAGE = 100;
+
+/** @deprecated Admins no longer receive margin share. Always 0. Kept for migration safety. */
+export const ADMIN_SHARE_PERCENTAGE = 0;
 
 /** MyTurn (platform) share of the service margin (% of margin). */
-export const MYTURN_SHARE_PERCENTAGE = 40;
+export const MYTURN_SHARE_PERCENTAGE = MYTURN_REVENUE_PERCENTAGE;
 
 export const BPS_DENOMINATOR = 10000;
 
@@ -20,15 +23,9 @@ export const DEFAULT_SERVICE_MARGIN_BPS = Math.round(
 );
 
 /**
- * Admin’s portion of the margin pool, in bps of that pool (60% → 6000/10000).
- * Used with {@link BPS_DENOMINATOR} in integer math.
+ * @deprecated Admin margin share removed. Always 0 bps. Kept for migration safety.
  */
-export const ADMIN_MARGIN_SHARE_BPS =
-  (ADMIN_SHARE_PERCENTAGE * BPS_DENOMINATOR) / 100;
+export const ADMIN_MARGIN_SHARE_BPS = 0;
 
-/**
- * MyTurn’s nominal share in bps (40% → 4000/10000).
- * Settlement code may use (margin − adminShare) for the platform remainder to avoid drift.
- */
-export const PLATFORM_MARGIN_SHARE_BPS =
-  (MYTURN_SHARE_PERCENTAGE * BPS_DENOMINATOR) / 100;
+/** MyTurn receives full margin pool (100% → 10000/10000). */
+export const PLATFORM_MARGIN_SHARE_BPS = MYTURN_REVENUE_PERCENTAGE * 100;

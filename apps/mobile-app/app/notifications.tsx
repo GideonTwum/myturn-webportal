@@ -1,4 +1,5 @@
 import { useRouter } from "expo-router";
+import { useEffect } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -18,6 +19,7 @@ import {
 import { IconCircle } from "@/components/icons/IconCircle";
 import { notificationIconMap } from "@/components/icons/maps";
 import { IS_MOCK_UI } from "@/constants/app-mode";
+import { useRequireAuth } from "@/hooks/useRequireAuth";
 import {
   useClearAllNotifications,
   useDeleteNotification,
@@ -31,7 +33,15 @@ import { fonts } from "@/constants/typography";
 
 export default function NotificationsScreen() {
   const router = useRouter();
-  const { data, isLoading } = useMemberNotifications(!IS_MOCK_UI);
+  const { isAuthenticated } = useRequireAuth();
+
+  useEffect(() => {
+    if (!isAuthenticated && !IS_MOCK_UI) {
+      router.replace("/(main)/home");
+    }
+  }, [isAuthenticated, router]);
+
+  const { data, isLoading } = useMemberNotifications(isAuthenticated && !IS_MOCK_UI);
   const deleteOne = useDeleteNotification();
   const clearAll = useClearAllNotifications();
   const items = IS_MOCK_UI

@@ -9,7 +9,7 @@ import type { WithdrawalsListResponse } from "@myturn/api-client";
 
 export default function AdminWithdrawalsPage() {
   const { data, isLoading } = useSWR<WithdrawalsListResponse>(
-    "/admin/withdrawals",
+    "/admin/member-withdrawals",
     swrFetcher,
     { refreshInterval: LIVE_POLL_MS },
   );
@@ -23,12 +23,9 @@ export default function AdminWithdrawalsPage() {
         <div>
           <h1 className="text-2xl font-semibold text-gray-900">Member withdrawals</h1>
           <p className="text-sm text-gray-600">
-            Monitor automatic MoMo withdrawals for members in your groups. You do
-            not approve these — the system sends MoMo directly.{" "}
-            <Link href="/admin/wallet" className="font-medium text-brand-green">
-              Your earnings withdrawals
-            </Link>{" "}
-            are automatic via MoMo.
+            Monitor automatic MoMo withdrawals for members in your groups. The
+            system sends MoMo directly — no admin approval required. Admins do
+            not have earnings wallets.
           </p>
         </div>
       </div>
@@ -51,11 +48,6 @@ export default function AdminWithdrawalsPage() {
               <tr key={r.id} className="border-t">
                 <td className="px-4 py-2 font-medium text-gray-900">
                   {r.actorName ?? "Member"}
-                  {r.actorRole === "ADMIN" ? (
-                    <span className="ml-2 text-xs font-semibold uppercase text-gray-500">
-                      You
-                    </span>
-                  ) : null}
                 </td>
                 <td className="px-4 py-2 text-gray-600">
                   Automatic

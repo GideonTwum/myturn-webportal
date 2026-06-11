@@ -13,7 +13,7 @@ describe("ReconciliationSummaryService", () => {
     ledgerAccount: { aggregate: vi.fn(), findMany: vi.fn() },
     payment: { aggregate: vi.fn() },
     withdrawalRequest: { aggregate: vi.fn(), count: vi.fn() },
-    adminEarning: { aggregate: vi.fn() },
+    adminEarning: { aggregate: vi.fn(), count: vi.fn().mockResolvedValue(0) },
     payout: { groupBy: vi.fn(), findMany: vi.fn() },
     ledgerTransaction: { findMany: vi.fn() },
     reconciliationSnapshot: { findFirst: vi.fn().mockResolvedValue(null) },
@@ -25,13 +25,20 @@ describe("ReconciliationSummaryService", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     accounts.getOrCreatePlatformFloat.mockResolvedValue({ balance: new Prisma.Decimal("0") });
-    accounts.getOrCreateMyturnRevenue.mockResolvedValue({ balance: new Prisma.Decimal("40") });
+    accounts.getOrCreateMyturnRevenue.mockResolvedValue({ balance: new Prisma.Decimal("100") });
     accounts.getOrCreateWithdrawalClearing.mockResolvedValue({ balance: new Prisma.Decimal("0") });
 
     prisma.ledgerAccount.aggregate.mockImplementation(({ where }: { where: { accountType: string } }) => {
-      if (where.accountType === "MEMBER_WALLET") return { _sum: { balance: new Prisma.Decimal("100") } };
-      if (where.accountType === "ADMIN_EARNINGS") return { _sum: { balance: new Prisma.Decimal("60") } };
-      if (where.accountType === "GROUP_POOL") return { _sum: { balance: new Prisma.Decimal("200") } };
+      if (where.accountType === "MEMBER_WALLET_AVAILABLE")
+        return { _sum: { balance: new Prisma.Decimal("80") } };
+      if (where.accountType === "MEMBER_WALLET_RESERVED")
+        return { _sum: { balance: new Prisma.Decimal("20") } };
+      if (where.accountType === "MEMBER_WALLET")
+        return { _sum: { balance: new Prisma.Decimal("0") } };
+      if (where.accountType === "ADMIN_EARNINGS")
+        return { _sum: { balance: new Prisma.Decimal("0") } };
+      if (where.accountType === "GROUP_POOL")
+        return { _sum: { balance: new Prisma.Decimal("200") } };
       return { _sum: { balance: new Prisma.Decimal("0") } };
     });
     prisma.ledgerAccount.findMany.mockResolvedValue([]);
@@ -41,8 +48,8 @@ describe("ReconciliationSummaryService", () => {
     prisma.adminEarning.aggregate.mockResolvedValue({
       _sum: {
         marginAmount: new Prisma.Decimal("100"),
-        adminShareAmount: new Prisma.Decimal("60"),
-        platformShareAmount: new Prisma.Decimal("40"),
+        adminShareAmount: new Prisma.Decimal("0"),
+        platformShareAmount: new Prisma.Decimal("100"),
       },
     });
     prisma.withdrawalRequest.count.mockResolvedValue(0);
@@ -59,6 +66,38 @@ describe("ReconciliationSummaryService", () => {
     expect(summary.status).toBe("ok");
     expect(summary.totalCollected).toBe("500.00");
     expect(summary.discrepancies).toEqual([]);
+  });
+
+  it("active liability formula includes available and reserved member wallets", async () => {
+    prisma.ledgerAccount.aggregate.mockImplementation(
+      ({ where }: { where: { accountType: string } }) => {
+        if (where.accountType === "MEMBER_WALLET_AVAILABLE")
+          return { _sum: { balance: new Prisma.Decimal("70") } };
+        if (where.accountType === "MEMBER_WALLET_RESERVED")
+          return { _sum: { balance: new Prisma.Decimal("30") } };
+        if (where.accountType === "MEMBER_WALLET")
+          return { _sum: { balance: new Prisma.Decimal("0") } };
+        if (where.accountType === "ADMIN_EARNINGS")
+          return { _sum: { balance: new Prisma.Decimal("25") } };
+        if (where.accountType === "GROUP_POOL")
+          return { _sum: { balance: new Prisma.Decimal("200") } };
+        return { _sum: { balance: new Prisma.Decimal("0") } };
+      },
+    );
+    accounts.getOrCreateMyturnRevenue.mockResolvedValue({
+      balance: new Prisma.Decimal("50"),
+    });
+    accounts.getOrCreateWithdrawalClearing.mockResolvedValue({
+      balance: new Prisma.Decimal("10"),
+    });
+
+    const summary = await svc.getSummary();
+
+    expect(summary.marginModel).toBe("myturn-100");
+    expect(summary.legacyAdminEarningsLiabilities).toBe("25.00");
+    expect(summary.memberWalletAvailable).toBe("70.00");
+    expect(summary.memberWalletReserved).toBe("30.00");
+    expect(summary.totalWalletLiabilities).toBe("360.00");
   });
 
   it("flags negative group pool aggregate", async () => {

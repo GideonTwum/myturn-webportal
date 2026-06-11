@@ -5,7 +5,7 @@ import {
   summarizeCycle,
 } from "./calculations";
 
-describe("summarizeCycle (MVP margin + 60/40 split)", () => {
+describe("summarizeCycle (service margin → 100% MyTurn revenue)", () => {
   /** GHS 10.00 per day in minor units */
   const tenCedis = 1000n;
   const n = 4;
@@ -30,24 +30,18 @@ describe("summarizeCycle (MVP margin + 60/40 split)", () => {
     expect(s.serviceMarginMinor).toBe(expectedMargin);
   });
 
-  it("splits margin 60% admin / 40% platform (of margin, not gross)", () => {
+  it("allocates 100% of margin to MyTurn (admin share is 0)", () => {
     const s = summarizeCycle(1, tenCedis, n, marginBps, 1);
     const { adminShareMinor, platformShareMinor } = splitMarginMinor(
       s.serviceMarginMinor,
     );
+    expect(adminShareMinor).toBe(0n);
     expect(adminShareMinor).toBe(s.adminShareMinor);
     expect(platformShareMinor).toBe(s.platformShareMinor);
-    expect(adminShareMinor + platformShareMinor).toBe(s.serviceMarginMinor);
-
-    const adminPct =
-      Number((adminShareMinor * 10000n) / s.serviceMarginMinor) / 100;
-    expect(adminPct).toBeCloseTo(60, 1);
-    const platPct =
-      Number((platformShareMinor * 10000n) / s.serviceMarginMinor) / 100;
-    expect(platPct).toBeCloseTo(40, 1);
+    expect(platformShareMinor).toBe(s.serviceMarginMinor);
   });
 
-  it("member payout equals gross minus 10% margin (net after margin)", () => {
+  it("member payout equals gross minus margin (net after margin)", () => {
     const s = summarizeCycle(1, tenCedis, n, marginBps, 1);
     const gross = tenCedis * BigInt(n);
     const margin = marginFromGrossMinor(gross, marginBps);

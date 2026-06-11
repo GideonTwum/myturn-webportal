@@ -18,47 +18,59 @@ import { cn } from "@/lib/cn";
 import { LIVE_POLL_MS, useSWR, useSWRConfig } from "@/lib/swr";
 
 type PlatformSplits = {
-  adminSharePercentage: number;
-  myTurnSharePercentage: number;
+  myTurnRevenuePercentage: number;
   serviceMarginPercentage: number;
+  /** @deprecated Always 0 */
+  adminSharePercentage?: number;
+  myTurnSharePercentage?: number;
 };
 
 type FinancialOverview = {
+  marginModel?: string;
   totalServiceMarginGhs: string;
+  totalMyTurnRevenueGhs?: string;
   totalMyTurnEarningsGhs: string;
-  totalAdminEarningsGhs: string;
+  legacyAdminEarningsGhs?: string;
+  totalAdminEarningsGhs?: string;
   myturnRevenueWalletBalanceGhs?: string;
   completedPayoutsCount: number;
   totalPaidToMembersGhs: string;
   platformSplits: PlatformSplits;
 };
 
-type EarningsRow = {
+type RevenueRow = {
   groupId: string;
   groupName: string;
+  operatorName?: string;
   adminName: string;
   contributionAmountGhs: string;
   groupSize: number;
   totalCollectedPerCycleGhs: string;
   serviceMarginTotalGhs: string;
-  adminShareTotalGhs: string;
+  myTurnRevenueTotalGhs?: string;
   myTurnShareTotalGhs: string;
+  legacyAdminShareTotalGhs?: string;
+  legacyAdminEarningsGhs?: string;
   completedCycles: number;
-  totalAdminEarningsGhs: string;
   totalMyTurnEarningsGhs: string;
+  adminShareTotalGhs?: string;
+  totalAdminEarningsGhs?: string;
 };
 
 type PayoutRow = {
   payoutId: string;
   memberName: string;
   groupName: string;
+  operatorName?: string;
   adminName: string;
   payoutPosition: number | null;
   cycleNumber: number;
   payoutAmountGhs: string;
   serviceMarginGhs: string;
-  adminShareGhs: string;
+  myTurnRevenueGhs?: string;
   myTurnShareGhs: string;
+  legacyAdminShareGhs?: string;
+  adminShareGhs?: string;
   payoutDate: string;
   status: string;
 };
@@ -68,6 +80,7 @@ type Paged<T> = {
   total: number;
   page: number;
   pageSize: number;
+  marginModel?: string;
 };
 
 type GroupOpt = {
@@ -77,6 +90,9 @@ type GroupOpt = {
 };
 
 type UserOpt = { id: string; email: string; role: string };
+
+const LEGACY_COPY =
+  "Admin earnings are deprecated. New service margin revenue belongs 100% to MyTurn.";
 
 const field =
   "rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 outline-none ring-brand-green/15 focus:border-brand-green focus:ring-2";
@@ -156,7 +172,7 @@ export function HqFinancialSection() {
     error: bdErr,
     isLoading: loadingBd,
     isValidating: vBd,
-  } = useSWR<Paged<EarningsRow>>(earningsUrl, swrOpts);
+  } = useSWR<Paged<RevenueRow>>(earningsUrl, swrOpts);
 
   const {
     data: payouts,
@@ -194,8 +210,12 @@ export function HqFinancialSection() {
   }, [mutate]);
 
   const split = overview?.platformSplits;
-  const adminPct = split?.adminSharePercentage ?? 60;
-  const myTurnPct = split?.myTurnSharePercentage ?? 40;
+  const myTurnPct =
+    split?.myTurnRevenuePercentage ?? split?.myTurnSharePercentage ?? 100;
+
+  const legacyAdminTotal =
+    overview?.legacyAdminEarningsGhs ?? overview?.totalAdminEarningsGhs ?? "0";
+  const hasLegacyAdmin = Number(legacyAdminTotal) > 0;
 
   const combinedErr = errMsg(overviewErr) ?? errMsg(bdErr) ?? errMsg(pyErr);
   const anyValidating = vOv || vBd || vPy;
@@ -208,10 +228,10 @@ export function HqFinancialSection() {
             Financial overview
           </h2>
           <p className="mt-1 text-sm text-gray-600">
-            Aggregated from ledger-backed{" "}
-            <span className="font-medium text-gray-800">AdminEarning</span>,{" "}
-            <span className="font-medium text-gray-800">Payout</span>, and wallet
-            accounts. Payouts reflect wallet credits, not MoMo disbursement.
+            Platform revenue, member liabilities, and payout activity from
+            ledger-backed records. Service margin is{" "}
+            <span className="font-medium text-blue-700">100% MyTurn revenue</span>
+            .
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -251,16 +271,31 @@ export function HqFinancialSection() {
         </p>
       )}
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-6">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <StatCard
           icon={TrendingUp}
-          label="Total revenue (service margins)"
+          label="Service margin revenue"
           value={
             loadingOv
               ? "—"
               : moneyLabel(overview?.totalServiceMarginGhs ?? "0")
           }
           loading={loadingOv}
+        />
+        <StatCard
+          icon={PiggyBank}
+          label="MyTurn revenue (recorded)"
+          value={
+            loadingOv
+              ? "—"
+              : moneyLabel(
+                  overview?.totalMyTurnRevenueGhs ??
+                    overview?.totalMyTurnEarningsGhs ??
+                    "0",
+                )
+          }
+          loading={loadingOv}
+          iconClassName="text-blue-700"
         />
         <StatCard
           icon={PiggyBank}
@@ -272,28 +307,6 @@ export function HqFinancialSection() {
           }
           loading={loadingOv}
           iconClassName="text-blue-700"
-        />
-        <StatCard
-          icon={PiggyBank}
-          label="Total MyTurn earnings (recorded)"
-          value={
-            loadingOv
-              ? "—"
-              : moneyLabel(overview?.totalMyTurnEarningsGhs ?? "0")
-          }
-          loading={loadingOv}
-          iconClassName="text-blue-700"
-        />
-        <StatCard
-          icon={Coins}
-          label="Total admin earnings"
-          value={
-            loadingOv
-              ? "—"
-              : moneyLabel(overview?.totalAdminEarningsGhs ?? "0")
-          }
-          loading={loadingOv}
-          iconClassName="text-brand-gold-dark"
         />
         <StatCard
           icon={Users}
@@ -315,6 +328,23 @@ export function HqFinancialSection() {
           iconClassName="text-brand-green"
         />
       </div>
+
+      {hasLegacyAdmin && (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50/60 p-4 sm:p-5">
+          <div className="flex items-start gap-3">
+            <Coins className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" />
+            <div>
+              <h3 className="text-sm font-bold text-amber-950">
+                Legacy admin earnings
+              </h3>
+              <p className="mt-1 text-sm text-amber-900">{LEGACY_COPY}</p>
+              <p className="mt-2 text-lg font-semibold text-amber-950">
+                {moneyLabel(legacyAdminTotal)}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-card sm:p-6">
         <h3 className="text-sm font-bold text-gray-900">Filters</h3>
@@ -358,7 +388,7 @@ export function HqFinancialSection() {
           </div>
           <div>
             <label className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-              Admin
+              Operator
             </label>
             <select
               value={adminId}
@@ -368,7 +398,7 @@ export function HqFinancialSection() {
               }}
               className={cn(field, "mt-1 w-full")}
             >
-              <option value="">All admins</option>
+              <option value="">All operators</option>
               {admins.map((a) => (
                 <option key={a.id} value={a.id}>
                   {a.label}
@@ -426,25 +456,21 @@ export function HqFinancialSection() {
           </div>
         </div>
         <p className="mt-3 text-xs text-gray-500">
-          Earnings use settlement date on margin records; payouts use payout date.
-          Split labels reflect fixed MVP rules (not editable in HQ):{" "}
-          <span className="font-medium text-brand-gold-dark">
-            Admin {adminPct}%
-          </span>
-          ,{" "}
+          Revenue breakdown uses settlement date on margin records; payouts use
+          payout date. Margin model:{" "}
           <span className="font-medium text-blue-700">
-            MyTurn {myTurnPct}%
-          </span>{" "}
-          of each cycle&apos;s margin.
+            {myTurnPct}% MyTurn revenue
+          </span>
+          .
         </p>
       </div>
 
       <div>
         <h3 className="text-base font-bold text-gray-900">
-          Platform earnings breakdown
+          Service margin revenue by group
         </h3>
         <p className="mt-1 text-sm text-gray-600">
-          Per group: totals across all finalized cycles (database-backed).
+          Per group totals across finalized cycles (database-backed).
         </p>
         <div className="mt-4 overflow-x-auto">
           {loadingBd ? (
@@ -457,7 +483,7 @@ export function HqFinancialSection() {
               ))}
             </div>
           ) : (
-            <DataTable<EarningsRow>
+            <DataTable<RevenueRow>
               columns={[
                 {
                   key: "groupName",
@@ -468,7 +494,11 @@ export function HqFinancialSection() {
                     </span>
                   ),
                 },
-                { key: "adminName", header: "Admin", render: (r) => r.adminName },
+                {
+                  key: "operatorName",
+                  header: "Operator",
+                  render: (r) => r.operatorName ?? r.adminName,
+                },
                 {
                   key: "contributionAmountGhs",
                   header: "Contribution",
@@ -486,38 +516,21 @@ export function HqFinancialSection() {
                   render: (r) => moneyLabel(r.serviceMarginTotalGhs),
                 },
                 {
-                  key: "adminShareTotalGhs",
-                  header: `Admin share (${adminPct}%)`,
-                  render: (r) => (
-                    <span className="font-semibold text-brand-gold-dark">
-                      {moneyLabel(r.adminShareTotalGhs)}
-                    </span>
-                  ),
-                },
-                {
-                  key: "myTurnShareTotalGhs",
-                  header: `MyTurn share (${myTurnPct}%)`,
+                  key: "myTurnRevenueTotalGhs",
+                  header: `MyTurn revenue (${myTurnPct}%)`,
                   render: (r) => (
                     <span className="font-semibold text-blue-700">
-                      {moneyLabel(r.myTurnShareTotalGhs)}
+                      {moneyLabel(
+                        r.myTurnRevenueTotalGhs ?? r.myTurnShareTotalGhs,
+                      )}
                     </span>
                   ),
                 },
                 { key: "completedCycles", header: "Completed cycles" },
-                {
-                  key: "totalAdminEarningsGhs",
-                  header: "Total admin earnings",
-                  render: (r) => moneyLabel(r.totalAdminEarningsGhs),
-                },
-                {
-                  key: "totalMyTurnEarningsGhs",
-                  header: "Total MyTurn earnings",
-                  render: (r) => moneyLabel(r.totalMyTurnEarningsGhs),
-                },
               ]}
               rows={breakdown?.items ?? []}
               rowKey={(r) => r.groupId}
-              emptyMessage="No earnings data for these filters."
+              emptyMessage="No revenue data for these filters."
             />
           )}
         </div>
@@ -529,6 +542,44 @@ export function HqFinancialSection() {
             onPage={setBdPage}
           />
         )}
+
+        {(breakdown?.items ?? []).some(
+          (r) =>
+            Number(r.legacyAdminShareTotalGhs ?? r.adminShareTotalGhs ?? 0) >
+            0,
+        ) && (
+          <div className="mt-6">
+            <h4 className="text-sm font-bold text-amber-950">
+              Legacy admin earnings
+            </h4>
+            <p className="mt-1 text-xs text-amber-900">{LEGACY_COPY}</p>
+            <div className="mt-3 overflow-x-auto">
+              <DataTable<RevenueRow>
+                columns={[
+                  { key: "groupName", header: "Group" },
+                  {
+                    key: "legacyAdminShareTotalGhs",
+                    header: "Legacy admin share",
+                    render: (r) =>
+                      moneyLabel(
+                        r.legacyAdminShareTotalGhs ??
+                          r.adminShareTotalGhs ??
+                          "0",
+                      ),
+                  },
+                ]}
+                rows={(breakdown?.items ?? []).filter(
+                  (r) =>
+                    Number(
+                      r.legacyAdminShareTotalGhs ?? r.adminShareTotalGhs ?? 0,
+                    ) > 0,
+                )}
+                rowKey={(r) => `legacy-${r.groupId}`}
+                emptyMessage="No legacy admin earnings."
+              />
+            </div>
+          </div>
+        )}
       </div>
 
       <div>
@@ -536,7 +587,7 @@ export function HqFinancialSection() {
           Member payout history
         </h3>
         <p className="mt-1 text-sm text-gray-600">
-          Every payout with margin split for that cycle.
+          Every payout with service margin allocation for that cycle.
         </p>
         <div className="mt-4">
           {loadingPy ? (
@@ -561,7 +612,11 @@ export function HqFinancialSection() {
                   ),
                 },
                 { key: "groupName", header: "Group" },
-                { key: "adminName", header: "Admin" },
+                {
+                  key: "operatorName",
+                  header: "Operator",
+                  render: (r) => r.operatorName ?? r.adminName,
+                },
                 {
                   key: "payoutPosition",
                   header: "Payout position",
@@ -586,20 +641,11 @@ export function HqFinancialSection() {
                   render: (r) => moneyLabel(r.serviceMarginGhs),
                 },
                 {
-                  key: "adminShareGhs",
-                  header: `Admin share (${adminPct}%)`,
-                  render: (r) => (
-                    <span className="text-brand-gold-dark">
-                      {moneyLabel(r.adminShareGhs)}
-                    </span>
-                  ),
-                },
-                {
-                  key: "myTurnShareGhs",
-                  header: `MyTurn share (${myTurnPct}%)`,
+                  key: "myTurnRevenueGhs",
+                  header: `MyTurn revenue (${myTurnPct}%)`,
                   render: (r) => (
                     <span className="text-blue-700">
-                      {moneyLabel(r.myTurnShareGhs)}
+                      {moneyLabel(r.myTurnRevenueGhs ?? r.myTurnShareGhs)}
                     </span>
                   ),
                 },

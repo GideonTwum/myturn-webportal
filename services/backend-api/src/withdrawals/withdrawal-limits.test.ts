@@ -14,11 +14,42 @@ describe("withdrawal limits", () => {
     delete process.env.WITHDRAWAL_MAX_DAILY_COUNT;
   });
 
-  it("uses default limits from env", () => {
+  it("defaults to no max single/daily caps when env unset", () => {
     const limits = getWithdrawalLimitsConfig();
     expect(limits.minAmount.toString()).toBe("1");
-    expect(limits.maxSingleAmount.toString()).toBe("5000");
-    expect(limits.maxDailyCount).toBe(5);
+    expect(limits.maxSingleAmount).toBeNull();
+    expect(limits.maxDailyAmount).toBeNull();
+    expect(limits.maxDailyCount).toBeNull();
+  });
+
+  it("allows withdrawal of full available balance when no max single limit", async () => {
+    const prisma = {
+      withdrawalRequest: { findMany: vi.fn() },
+    };
+    await expect(
+      assertWithdrawalWithinLimits(
+        prisma as never,
+        "user-1",
+        WithdrawalActorRole.MEMBER,
+        new Prisma.Decimal("42000"),
+      ),
+    ).resolves.toBeUndefined();
+    expect(prisma.withdrawalRequest.findMany).not.toHaveBeenCalled();
+  });
+
+  it("enforces explicit max single limit when configured", async () => {
+    process.env.WITHDRAWAL_MAX_SINGLE_AMOUNT = "5000";
+    const prisma = {
+      withdrawalRequest: { findMany: vi.fn() },
+    };
+    await expect(
+      assertWithdrawalWithinLimits(
+        prisma as never,
+        "user-1",
+        WithdrawalActorRole.MEMBER,
+        new Prisma.Decimal("5000.01"),
+      ),
+    ).rejects.toThrow(/Maximum single withdrawal is GHS 5000.00/);
   });
 
   it("rejects amount below minimum without moving funds", async () => {
@@ -36,7 +67,8 @@ describe("withdrawal limits", () => {
     expect(prisma.withdrawalRequest.findMany).not.toHaveBeenCalled();
   });
 
-  it("rejects when daily count exceeded", async () => {
+  it("rejects when daily count exceeded and limit configured", async () => {
+    process.env.WITHDRAWAL_MAX_DAILY_COUNT = "5";
     const prisma = {
       withdrawalRequest: {
         findMany: vi.fn().mockResolvedValue([
@@ -56,5 +88,24 @@ describe("withdrawal limits", () => {
         new Prisma.Decimal("10"),
       ),
     ).rejects.toThrow(/Daily withdrawal limit reached/);
+  });
+
+  it("rejects when daily amount exceeded and limit configured", async () => {
+    process.env.WITHDRAWAL_MAX_DAILY_AMOUNT = "10000";
+    const prisma = {
+      withdrawalRequest: {
+        findMany: vi.fn().mockResolvedValue([
+          { amount: new Prisma.Decimal("9000") },
+        ]),
+      },
+    };
+    await expect(
+      assertWithdrawalWithinLimits(
+        prisma as never,
+        "user-1",
+        WithdrawalActorRole.MEMBER,
+        new Prisma.Decimal("2000"),
+      ),
+    ).rejects.toThrow(/Daily withdrawal limit is GHS 10000.00/);
   });
 });

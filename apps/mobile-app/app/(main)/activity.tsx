@@ -2,10 +2,13 @@ import { useRouter } from "expo-router";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import { Sparkles, Users } from "lucide-react-native";
 import { ActivityCard, GlassHeader, PremiumCard, PremiumScreen } from "@/components/premium";
+import { AuthPromptModal } from "@/components/guest/AuthPromptModal";
+import { GuestActivity } from "@/components/guest/GuestActivity";
 import { PremiumIcon } from "@/components/icons/PremiumIcon";
 import { IS_MOCK_UI } from "@/constants/app-mode";
 import { notificationsToActivity } from "@/lib/activity-mapper";
 import { resolveNotificationRoute } from "@/lib/notification-routes";
+import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { useMemberNotifications } from "@/hooks/useMemberQueries";
 import { mockActivities } from "@/mock-data";
 import { tokens } from "@/constants/tokens";
@@ -13,7 +16,30 @@ import { fonts } from "@/constants/typography";
 
 export default function ActivityScreen() {
   const router = useRouter();
-  const { data, isLoading } = useMemberNotifications(!IS_MOCK_UI);
+  const {
+    isAuthenticated,
+    promptVisible,
+    closePrompt,
+    startAuth,
+    onLogin,
+    onSignUp,
+  } = useRequireAuth();
+  const { data, isLoading } = useMemberNotifications(isAuthenticated && !IS_MOCK_UI);
+
+  if (!isAuthenticated) {
+    return (
+      <>
+        <GuestActivity onLogin={() => void startAuth("login")} />
+        <AuthPromptModal
+          visible={promptVisible}
+          onClose={closePrompt}
+          onLogin={onLogin}
+          onSignUp={onSignUp}
+        />
+      </>
+    );
+  }
+
   const activities = IS_MOCK_UI
     ? mockActivities
     : notificationsToActivity(data?.notifications ?? []);

@@ -9,6 +9,7 @@ import { IS_MOCK_UI } from "@/constants/app-mode";
 import { StagingSafetyNotice } from "@/components/StagingSafetyNotice";
 import { formatGhs } from "@/lib/format-money";
 import { usePaymentFlow } from "@/hooks/usePaymentFlow";
+import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { useTrustProfile } from "@/hooks/useMemberQueries";
 import { GhanaCardGateModal } from "@/components/premium/GhanaCardGateModal";
 import { ghanaCardStatusLabel, needsGhanaCardForContribute } from "@/lib/ghana-card-status";
@@ -31,7 +32,15 @@ export default function MoMoPaymentScreen() {
   const [step, setStep] = useState<Step>(1);
   const [mockStep, setMockStep] = useState<Step>(1);
   const [ghanaGateOpen, setGhanaGateOpen] = useState(false);
-  const trustQuery = useTrustProfile(!IS_MOCK_UI);
+  const { isAuthenticated } = useRequireAuth();
+
+  useEffect(() => {
+    if (!isAuthenticated && !IS_MOCK_UI) {
+      router.replace("/(main)/home");
+    }
+  }, [isAuthenticated, router]);
+
+  const trustQuery = useTrustProfile(isAuthenticated && !IS_MOCK_UI);
   const mustVerifyGhana = needsGhanaCardForContribute(
     trustQuery.data?.ghanaCardVerificationStatus,
     trustQuery.data?.unlocks.ghanaCardVerified,

@@ -43,7 +43,7 @@ export default function HqWithdrawalsPage() {
       <h1 className="text-2xl font-semibold text-gray-900">Withdrawal oversight</h1>
       <p className="text-sm text-gray-600">
         All withdrawals are <span className="font-medium">automatic</span> via MTN
-        disbursement (members and admin earnings). HQ monitors status and handles
+        disbursement (members only — admin earnings wallets deprecated). HQ monitors and handles
         exceptions only — fail stuck withdrawals or apply a manual override when a
         provider callback was missed.
       </p>

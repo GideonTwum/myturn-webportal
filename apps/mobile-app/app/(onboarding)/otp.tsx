@@ -1,4 +1,4 @@
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { type Href, useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import { CheckCircle2, ShieldCheck } from "lucide-react-native";
@@ -20,6 +20,7 @@ import {
   getOtpPhone,
   setOtpSession,
 } from "@/lib/onboarding-storage";
+import { clearAuthRedirect, getAuthRedirect } from "@/lib/auth-intent";
 import { maskPhone, normalizePhoneForApi } from "@/lib/phone";
 import { useDemoOptional } from "@/providers/DemoProvider";
 import { useAuth } from "@/providers/AuthProvider";
@@ -33,10 +34,13 @@ function paramString(v: string | string[] | undefined): string {
 
 export default function OtpScreen() {
   const router = useRouter();
-  const { phone: phoneParam } = useLocalSearchParams<{ phone?: string | string[] }>();
+  const { phone: phoneParam, redirectTo: redirectParam } = useLocalSearchParams<{
+    phone?: string | string[];
+    redirectTo?: string | string[];
+  }>();
   const demo = useDemoOptional();
   const { signInWithOtp, requestOtp } = useAuth();
-  const groupsQuery = useMemberGroups(!IS_MOCK_UI);
+  const groupsQuery = useMemberGroups(false);
   const [phone, setPhone] = useState(paramString(phoneParam));
   const [stagingCode, setStagingCode] = useState<string | null>(null);
   const phoneMasked = demo?.user.phoneMasked ?? maskPhone(phone);
@@ -84,10 +88,15 @@ export default function OtpScreen() {
       await signInWithOtp(canonical, otp);
       await clearOtpSession();
       setSuccess(true);
+      const redirectTo =
+        paramString(redirectParam) || (await getAuthRedirect()) || undefined;
+      if (redirectTo) await clearAuthRedirect();
       const memberships = (await groupsQuery.refetch()).data?.memberships ?? [];
       setTimeout(() => {
         setSuccess(false);
-        if (memberships.length > 0) {
+        if (redirectTo) {
+          router.replace(redirectTo as Href);
+        } else if (memberships.length > 0) {
           router.replace("/(main)/home");
         } else {
           router.replace("/(onboarding)/group-preview");

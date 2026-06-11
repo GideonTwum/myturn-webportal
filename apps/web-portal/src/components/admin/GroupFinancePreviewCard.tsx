@@ -78,25 +78,13 @@ export function GroupFinancePreviewCard({
         </dd>
       </div>
       <div className="flex justify-between gap-2 border-b border-gray-100 pb-2">
-        <dt className="text-gray-500">Admin earnings / cycle</dt>
-        <dd className="font-semibold text-brand-gold-dark">
-          {formatGhs(preview.adminEarningPerCycle)}
-        </dd>
-      </div>
-      <div className="flex justify-between gap-2 border-b border-gray-100 pb-2">
-        <dt className="text-gray-500">MyTurn earnings / cycle</dt>
+        <dt className="text-gray-500">MyTurn revenue / cycle</dt>
         <dd className="font-semibold text-blue-700">
           {formatGhs(preview.myTurnEarningPerCycle)}
         </dd>
       </div>
       <div className="flex justify-between gap-2 border-b border-gray-100 pb-2">
-        <dt className="text-gray-500">Total admin earnings</dt>
-        <dd className="font-semibold text-brand-gold-dark">
-          {formatGhs(preview.totalAdminEarnings)}
-        </dd>
-      </div>
-      <div className="flex justify-between gap-2 border-b border-gray-100 pb-2">
-        <dt className="text-gray-500">Total MyTurn earnings</dt>
+        <dt className="text-gray-500">Total MyTurn revenue</dt>
         <dd className="font-semibold text-blue-700">
           {formatGhs(preview.totalMyTurnEarnings)}
         </dd>

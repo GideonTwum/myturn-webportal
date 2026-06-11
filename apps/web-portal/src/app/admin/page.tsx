@@ -5,9 +5,10 @@ import Link from "next/link";
 import {
   ArrowDownLeft,
   Building2,
-  Coins,
+  CreditCard,
   Radio,
   RefreshCw,
+  ShieldCheck,
   Users,
 } from "lucide-react";
 import { formatGhs } from "@myturn/shared";
@@ -20,7 +21,8 @@ type AdminOverview = {
   activeGroups: number;
   completedGroups: number;
   totalMembers: number;
-  totalMarginEarningsGhs: string;
+  pendingContributions: number;
+  pendingVerifications: number;
   completedPayoutsCount: number;
   totalPaidToMembersGhs: string;
 };
@@ -32,15 +34,20 @@ export default function AdminHomePage() {
     { refreshInterval: LIVE_POLL_MS },
   );
 
-  const margin = Number(data?.totalMarginEarningsGhs ?? 0);
   const paid = Number(data?.totalPaidToMembersGhs ?? 0);
 
   return (
     <div className="mx-auto max-w-7xl">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-sm text-gray-600">
-          Live snapshot of your groups and earnings — updates automatically.
-        </p>
+        <div>
+          <p className="text-sm text-gray-600">
+            Platform operator dashboard — manage groups, members, and cycles.
+          </p>
+          <p className="mt-1 text-xs text-gray-500">
+            Admins work on behalf of MyTurn. Compensation is managed separately
+            by MyTurn operations.
+          </p>
+        </div>
         <div className="flex flex-wrap items-center gap-2">
           <span
             className={cn(
@@ -69,11 +76,11 @@ export default function AdminHomePage() {
           </button>
         </div>
       </div>
-      {error && (
+      {error ? (
         <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {error instanceof Error ? error.message : "Failed to load"}
         </p>
-      )}
+      ) : null}
       <motion.div
         initial={{ opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
@@ -83,7 +90,7 @@ export default function AdminHomePage() {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
           <StatCard
             icon={Building2}
-            label="Groups created"
+            label="Managed groups"
             value={isLoading ? "—" : String(data?.groupsCreated ?? 0)}
             loading={isLoading}
           />
@@ -95,47 +102,38 @@ export default function AdminHomePage() {
             iconClassName="text-emerald-600"
           />
           <StatCard
-            icon={Building2}
-            label="Completed groups"
-            value={isLoading ? "—" : String(data?.completedGroups ?? 0)}
-            loading={isLoading}
-            iconClassName="text-blue-700"
-          />
-          <StatCard
             icon={Users}
-            label="Total members"
+            label="Active members"
             value={isLoading ? "—" : String(data?.totalMembers ?? 0)}
             loading={isLoading}
           />
           <StatCard
-            icon={Coins}
-            label="Your margin earnings (cumulative)"
-            value={
-              isLoading ? "—" : formatGhs(Number.isFinite(margin) ? margin : 0)
-            }
+            icon={ShieldCheck}
+            label="Pending verifications"
+            value={isLoading ? "—" : String(data?.pendingVerifications ?? 0)}
             loading={isLoading}
-            iconClassName="text-brand-gold-dark"
+            iconClassName="text-amber-600"
           />
-          <StatCard
-            icon={ArrowDownLeft}
-            label="Payouts completed"
-            value={
-              isLoading ? "—" : String(data?.completedPayoutsCount ?? 0)
-            }
-            loading={isLoading}
-            iconClassName="text-brand-green"
-          />
-          <Link href="/admin/earnings" className="block sm:col-span-2 xl:col-span-1">
+          <Link href="/admin/contributions" className="block">
             <StatCard
-              icon={Coins}
-              label="View earnings detail →"
+              icon={CreditCard}
+              label="Contributions outstanding"
+              value={isLoading ? "—" : String(data?.pendingContributions ?? 0)}
+              loading={isLoading}
+              className="h-full cursor-pointer transition-all hover:border-brand-green/40 hover:shadow-card-md"
+            />
+          </Link>
+          <Link href="/admin/payouts" className="block">
+            <StatCard
+              icon={ArrowDownLeft}
+              label="Cycle finalization"
               value={
                 isLoading
                   ? "—"
-                  : `Paid out ${formatGhs(Number.isFinite(paid) ? paid : 0)} to members`
+                  : `${data?.completedPayoutsCount ?? 0} payouts · ${formatGhs(Number.isFinite(paid) ? paid : 0)} to members`
               }
               loading={isLoading}
-              className="h-full cursor-pointer transition-all hover:border-brand-gold/50 hover:shadow-card-md"
+              className="h-full cursor-pointer transition-all hover:border-brand-green/40 hover:shadow-card-md"
             />
           </Link>
         </div>

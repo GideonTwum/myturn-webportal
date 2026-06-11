@@ -8,6 +8,9 @@ import { profileStatIcons } from "@/components/icons/maps";
 import { IS_MOCK_UI } from "@/constants/app-mode";
 import { formatGhs } from "@/lib/format-money";
 import { ghanaCardStatusLabel } from "@/lib/ghana-card-status";
+import { AuthPromptModal } from "@/components/guest/AuthPromptModal";
+import { GuestProfile } from "@/components/guest/GuestProfile";
+import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { useMemberGroups, useMemberMe, useMemberPayouts, useTrustProfile } from "@/hooks/useMemberQueries";
 import { useMemberWallet } from "@/hooks/useWalletQueries";
 import { mockBadges, mockPayoutHistory } from "@/mock-data";
@@ -19,12 +22,39 @@ import { fonts } from "@/constants/typography";
 export default function ProfileScreen() {
   const router = useRouter();
   const demo = useDemoOptional();
-  const { user, signOut, token } = useAuth();
-  const meQuery = useMemberMe(Boolean(token) && !IS_MOCK_UI);
-  const trustQuery = useTrustProfile(Boolean(token) && !IS_MOCK_UI);
-  const groupsQuery = useMemberGroups(Boolean(token) && !IS_MOCK_UI);
-  const payoutsQuery = useMemberPayouts(Boolean(token) && !IS_MOCK_UI);
-  const walletQuery = useMemberWallet(Boolean(token) && !IS_MOCK_UI);
+  const { user, signOut } = useAuth();
+  const {
+    isAuthenticated,
+    promptVisible,
+    closePrompt,
+    startAuth,
+    requireAuth,
+    onLogin,
+    onSignUp,
+  } = useRequireAuth();
+  const meQuery = useMemberMe(isAuthenticated && !IS_MOCK_UI);
+  const trustQuery = useTrustProfile(isAuthenticated && !IS_MOCK_UI);
+  const groupsQuery = useMemberGroups(isAuthenticated && !IS_MOCK_UI);
+  const payoutsQuery = useMemberPayouts(isAuthenticated && !IS_MOCK_UI);
+  const walletQuery = useMemberWallet(isAuthenticated && !IS_MOCK_UI);
+
+  if (!isAuthenticated) {
+    return (
+      <>
+        <GuestProfile
+          onLogin={() => void startAuth("login")}
+          onSignUp={() => void startAuth("signup")}
+          onHowItWorks={() => router.push("/(main)/home")}
+        />
+        <AuthPromptModal
+          visible={promptVisible}
+          onClose={closePrompt}
+          onLogin={onLogin}
+          onSignUp={onSignUp}
+        />
+      </>
+    );
+  }
 
   function payoutStatusLabel(status: string | undefined): string {
     if (!status) return "";
@@ -150,7 +180,11 @@ export default function ProfileScreen() {
           <GradientButton
             label="Open wallet"
             variant="ghost"
-            onPress={() => router.push("/(main)/wallet" as Href)}
+            onPress={() => {
+              if (requireAuth("/(main)/wallet")) {
+                router.push("/(main)/wallet" as Href);
+              }
+            }}
             style={{ marginTop: 12 }}
           />
         ) : null}
@@ -197,6 +231,12 @@ export default function ProfileScreen() {
       {!IS_MOCK_UI ? (
         <GradientButton label="Sign out" variant="ghost" onPress={() => void signOut()} style={{ marginTop: 24 }} />
       ) : null}
+      <AuthPromptModal
+        visible={promptVisible}
+        onClose={closePrompt}
+        onLogin={onLogin}
+        onSignUp={onSignUp}
+      />
       <View style={styles.secure}>
         <PremiumIcon icon={Lock} size="xs" color={tokens.colors.onSurfaceVariant} />
         <Text style={styles.secureText}>

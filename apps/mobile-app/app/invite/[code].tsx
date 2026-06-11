@@ -72,7 +72,10 @@ export default function InviteLandingScreen() {
       router.push("/(onboarding)/join");
       return;
     }
-    router.push("/(onboarding)/phone");
+    router.push({
+      pathname: "/(onboarding)/phone",
+      params: { mode: "signup", redirectTo: "/(onboarding)/join" },
+    });
   }
 
   return (

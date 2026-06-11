@@ -1,4 +1,4 @@
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
 import { ActivityIndicator, StyleSheet, Text, TextInput, View } from "react-native";
 import { LockKeyhole } from "lucide-react-native";
@@ -14,8 +14,19 @@ import { tokens } from "@/constants/tokens";
 import { fonts } from "@/constants/typography";
 import { APP_BRAND, APP_DISPLAY_NAME } from "@/constants/app-brand";
 
+function paramString(v: string | string[] | undefined): string {
+  if (Array.isArray(v)) return v[0] ?? "";
+  return v ?? "";
+}
+
 export default function PhoneScreen() {
   const router = useRouter();
+  const { mode, redirectTo } = useLocalSearchParams<{
+    mode?: string | string[];
+    redirectTo?: string | string[];
+  }>();
+  const authMode = paramString(mode) === "signup" ? "signup" : "login";
+  const redirectPath = paramString(redirectTo) || undefined;
   const demo = useDemoOptional();
   const { requestOtp } = useAuth();
   const [phone, setPhone] = useState("");
@@ -28,7 +39,14 @@ export default function PhoneScreen() {
     setDebugCode(null);
     if (IS_MOCK_UI && demo) {
       demo.updatePhone(phone);
-      router.push({ pathname: "/(onboarding)/otp", params: { phone } });
+      router.push({
+        pathname: "/(onboarding)/otp",
+        params: {
+          phone,
+          mode: authMode,
+          ...(redirectPath ? { redirectTo: redirectPath } : {}),
+        },
+      });
       return;
     }
     setLoading(true);
@@ -37,7 +55,14 @@ export default function PhoneScreen() {
       const res = await requestOtp(phone);
       if (res.debugCode) setDebugCode(res.debugCode);
       await setOtpSession(canonical, res.debugCode);
-      router.push({ pathname: "/(onboarding)/otp", params: { phone: canonical } });
+      router.push({
+        pathname: "/(onboarding)/otp",
+        params: {
+          phone: canonical,
+          mode: authMode,
+          ...(redirectPath ? { redirectTo: redirectPath } : {}),
+        },
+      });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not send code");
     } finally {
@@ -53,8 +78,14 @@ export default function PhoneScreen() {
         <View style={styles.dot} />
       </View>
       <IconCircle icon={LockKeyhole} size={56} iconSize="xl" style={styles.iconWrap} />
-      <Text style={styles.h1}>Welcome to {APP_DISPLAY_NAME}</Text>
-      <Text style={styles.sub}>Join our premium savings community. Your growth journey starts here.</Text>
+      <Text style={styles.h1}>
+        {authMode === "signup" ? "Create your MyTurn account" : "Welcome back"}
+      </Text>
+      <Text style={styles.sub}>
+        {authMode === "signup"
+          ? "Enter your phone number to get started."
+          : "Enter your phone number to continue."}
+      </Text>
 
       <PremiumCard>
         <Text style={styles.label}>PHONE NUMBER</Text>

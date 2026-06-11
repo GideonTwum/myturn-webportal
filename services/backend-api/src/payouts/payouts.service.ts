@@ -14,6 +14,7 @@ import { memberCyclePaymentDays } from "../common/member-cycle-payment-days";
 import { CycleComplianceService } from "../cycle-risk/cycle-compliance.service";
 import { CycleDepositsService } from "../cycle-risk/cycle-deposits.service";
 import { AuditLogsService } from "../audit-logs/audit-logs.service";
+import { ContributionGuaranteeReserveService } from "../ledger-accounts/contribution-guarantee-reserve.service";
 import { FinancialAllocationService } from "../ledger-accounts/financial-allocation.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService } from "../prisma/prisma.service";
@@ -33,13 +34,14 @@ export class PayoutsService {
   constructor(
     private prisma: PrismaService,
     private allocation: FinancialAllocationService,
+    private reserve: ContributionGuaranteeReserveService,
     private notifications: NotificationsService,
     private audit: AuditLogsService,
     private cycleCompliance: CycleComplianceService,
     private deposits: CycleDepositsService,
   ) {}
 
-  /** Cycle finalization: wallet credits for recipient, admin earnings, and MyTurn revenue. */
+  /** Cycle finalization: wallet credits for recipient and 100% MyTurn revenue (audit row only). */
   async finalizeCycle(
     groupId: string,
     cycleNumber: number,
@@ -91,7 +93,14 @@ export class PayoutsService {
       }
     }
 
-    const { payout, summary: cycleSummary, groupCompleted, nextCycle } =
+    const {
+      payout,
+      summary: cycleSummary,
+      groupCompleted,
+      nextCycle,
+      allocResult,
+      groupFinalReserveReleases,
+    } =
       await this.prisma.$transaction(async (tx) => {
         const group = await tx.group.findUnique({
           where: { id: groupId },
@@ -176,31 +185,37 @@ export class PayoutsService {
           },
         });
 
+        const marginAmount = fromMinor(summaryVal.serviceMarginMinor);
         await tx.adminEarning.create({
           data: {
             adminId: group.adminId,
             groupId,
             cycleNumber,
-            marginAmount: fromMinor(summaryVal.serviceMarginMinor),
-            adminShareAmount: fromMinor(summaryVal.adminShareMinor),
-            platformShareAmount: fromMinor(summaryVal.platformShareMinor),
+            marginAmount,
+            adminShareAmount: new Prisma.Decimal(0),
+            platformShareAmount: marginAmount,
             settledAt: new Date(),
           },
         });
 
-        await this.allocation.allocateCycleFinalizationInTx(tx, {
-          groupId,
-          cycleNumber,
-          payoutId: payoutRow.id,
-          recipientUserId: recipient.userId,
-          adminUserId: group.adminId,
-          contributionPerDay: new Prisma.Decimal(
-            group.contributionAmount.toString(),
-          ),
-          memberCount: n,
-          serviceMarginBps: group.serviceMarginBps,
-          daysPerCycle: memberCyclePaymentDays(group),
-        });
+        const allocResult = await this.allocation.allocateCycleFinalizationInTx(
+          tx,
+          {
+            groupId,
+            cycleNumber,
+            payoutId: payoutRow.id,
+            recipientUserId: recipient.userId,
+            adminUserId: group.adminId,
+            contributionPerDay: new Prisma.Decimal(
+              group.contributionAmount.toString(),
+            ),
+            memberCount: n,
+            serviceMarginBps: group.serviceMarginBps,
+            daysPerCycle: memberCyclePaymentDays(group),
+            payoutPosition: recipient.turnOrder,
+            totalPositions: n,
+          },
+        );
 
         const totalCycles = group.memberSlots;
         let groupCompleted = false;
@@ -246,11 +261,20 @@ export class PayoutsService {
           await this.deposits.releaseAllHeldDepositsForGroup(tx, groupId);
         }
 
+        const groupFinalReserveReleases = groupCompleted
+          ? await this.reserve.releaseAllActiveReservesOnGroupCompletedInTx(
+              tx,
+              { groupId },
+            )
+          : [];
+
         return {
           payout: payoutRow,
           summary: summaryVal,
           groupCompleted,
           nextCycle,
+          allocResult,
+          groupFinalReserveReleases,
         };
       });
 
@@ -267,21 +291,29 @@ export class PayoutsService {
     });
     const groupName = groupRow?.name ?? "your group";
 
+    const availableNum = Number(allocResult.availableAmount.toString());
+    const reserveNum = Number(allocResult.reserveAmount.toString());
+    const payoutBody =
+      reserveNum > 0
+        ? `GHS ${payoutAmountNum.toFixed(2)} has been credited to your wallet. GHS ${availableNum.toFixed(2)} is available now and GHS ${reserveNum.toFixed(2)} is reserved as your Contribution Guarantee.`
+        : `GHS ${payoutAmountNum.toFixed(2)} has been credited to your MyTurn wallet from ${groupName}.`;
+
     await this.notifications.create(
       payout.recipientId,
       "It's Your Turn!!",
-      `GHS ${payoutAmountNum.toFixed(2)} has been credited to your MyTurn wallet from ${groupName}.`,
+      payoutBody,
       "PAYOUT",
-      { payoutId: payout.id, groupId, amount: payoutAmountNum.toFixed(2), walletCredit: true },
+      {
+        payoutId: payout.id,
+        groupId,
+        amount: payoutAmountNum.toFixed(2),
+        availableAmount: availableNum.toFixed(2),
+        reserveAmount: reserveNum.toFixed(2),
+        walletCredit: true,
+      },
     );
     if (groupRow) {
-      await this.notifications.create(
-        groupRow.adminId,
-        "Admin earnings credited",
-        `You earned GHS ${fromMinor(cycleSummary.adminShareMinor).toFixed(2)} from ${groupRow.name} (cycle ${cycleNumber}).`,
-        "ADMIN_EARNINGS",
-        { groupId, cycleNumber, payoutId: payout.id },
-      );
+      // Admins are platform operators — margin revenue goes 100% to MyTurn (no admin earnings).
       await this.notifications.create(
         groupRow.adminId,
         "Cycle finalized",
@@ -304,8 +336,25 @@ export class PayoutsService {
         groupCompleted,
         nextCycle,
         walletCredit: true,
+        finalReserveReleases: groupFinalReserveReleases.map((r) => ({
+          reserveId: r.reserveId,
+          userId: r.userId,
+          amount: r.amount,
+        })),
       },
     });
+
+    if (groupFinalReserveReleases.length > 0) {
+      for (const release of groupFinalReserveReleases) {
+        await this.reserve.notifyGroupCompletedReserveRelease(release);
+      }
+      const releasedUserIds = [
+        ...new Set(groupFinalReserveReleases.map((r) => r.userId)),
+      ];
+      for (const userId of releasedUserIds) {
+        await this.allocation.syncLegacyMemberWallet(userId);
+      }
+    }
 
     return {
       payout,

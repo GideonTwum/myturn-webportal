@@ -2,8 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import {
-  ADMIN_SHARE_PERCENTAGE,
-  MYTURN_SHARE_PERCENTAGE,
+  MYTURN_REVENUE_PERCENTAGE,
   SERVICE_MARGIN_PERCENTAGE,
 } from "@myturn/shared";
 import { Shield } from "lucide-react";
@@ -67,8 +66,8 @@ export default function HqSettingsPage() {
             <p className="mt-0.5 text-xs text-amber-900/80">
               Service margin is set per group (2%–20% max by pool size; default{" "}
               {SERVICE_MARGIN_PERCENTAGE}% when allowed). Split of margin:
-              cycle. Margin split: {ADMIN_SHARE_PERCENTAGE}% admin /{" "}
-              {MYTURN_SHARE_PERCENTAGE}% MyTurn. Same values power group
+              cycle. Margin revenue: {MYTURN_REVENUE_PERCENTAGE}% MyTurn (admin
+              margin share deprecated). Same values power group
               preview, payouts, ledger, and HQ reporting. To change a release,
               update <code className="rounded bg-white/80 px-1">packages/shared</code>{" "}
               and redeploy.
@@ -85,20 +84,12 @@ export default function HqSettingsPage() {
                 {SERVICE_MARGIN_PERCENTAGE}%
               </p>
             </li>
-            <li className="rounded-xl border border-gray-200 bg-white px-3 py-2">
+            <li className="rounded-xl border border-gray-200 bg-white px-3 py-2 sm:col-span-2">
               <span className="text-xs font-bold uppercase tracking-wide text-gray-500">
-                Admin (of margin)
-              </span>
-              <p className="mt-1 text-lg font-bold text-brand-gold-dark">
-                {ADMIN_SHARE_PERCENTAGE}%
-              </p>
-            </li>
-            <li className="rounded-xl border border-gray-200 bg-white px-3 py-2">
-              <span className="text-xs font-bold uppercase tracking-wide text-gray-500">
-                MyTurn (of margin)
+                MyTurn revenue (of margin)
               </span>
               <p className="mt-1 text-lg font-bold text-blue-800">
-                {MYTURN_SHARE_PERCENTAGE}%
+                {MYTURN_REVENUE_PERCENTAGE}%
               </p>
             </li>
           </ul>

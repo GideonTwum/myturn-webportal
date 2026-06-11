@@ -1,5 +1,5 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   ScrollView,
@@ -21,6 +21,7 @@ import { PremiumIcon } from "@/components/icons/PremiumIcon";
 import { IS_MOCK_UI } from "@/constants/app-mode";
 import { formatGhs, healthScoreFromProgress } from "@/lib/format-money";
 import { ghanaCardStatusLabel, needsGhanaCardForContribute } from "@/lib/ghana-card-status";
+import { useRequireAuth } from "@/hooks/useRequireAuth";
 import {
   useMemberGroup,
   useMemberGroupMembers,
@@ -37,9 +38,20 @@ export default function GroupDetailScreen() {
   const showCelebrate = celebrate === "1";
   const [ghanaGateOpen, setGhanaGateOpen] = useState(false);
 
-  const { data: apiGroup, isLoading, isError } = useMemberGroup(groupId, !IS_MOCK_UI);
-  const membersQuery = useMemberGroupMembers(groupId, !IS_MOCK_UI);
-  const trustQuery = useTrustProfile(!IS_MOCK_UI);
+  const { isAuthenticated } = useRequireAuth();
+
+  useEffect(() => {
+    if (!isAuthenticated && !IS_MOCK_UI) {
+      router.replace("/(main)/groups");
+    }
+  }, [isAuthenticated, router]);
+
+  const { data: apiGroup, isLoading, isError } = useMemberGroup(
+    groupId,
+    isAuthenticated && !IS_MOCK_UI,
+  );
+  const membersQuery = useMemberGroupMembers(groupId, isAuthenticated && !IS_MOCK_UI);
+  const trustQuery = useTrustProfile(isAuthenticated && !IS_MOCK_UI);
 
   const ghanaStatus = ghanaCardStatusLabel(
     trustQuery.data?.ghanaCardVerificationStatus ?? null,

@@ -4,9 +4,12 @@ import type { PrismaService } from "../prisma/prisma.service";
 
 export type WithdrawalLimitsConfig = {
   minAmount: Prisma.Decimal;
-  maxSingleAmount: Prisma.Decimal;
-  maxDailyAmount: Prisma.Decimal;
-  maxDailyCount: number;
+  /** Unset = no platform single-withdrawal cap (available balance is the limit). */
+  maxSingleAmount: Prisma.Decimal | null;
+  /** Unset = no daily amount cap. */
+  maxDailyAmount: Prisma.Decimal | null;
+  /** Unset = no daily count cap. */
+  maxDailyCount: number | null;
 };
 
 function parseDecimal(name: string, fallback: string): Prisma.Decimal {
@@ -16,19 +19,31 @@ function parseDecimal(name: string, fallback: string): Prisma.Decimal {
   return d;
 }
 
-function parseIntEnv(name: string, fallback: number): number {
+function parseOptionalDecimal(name: string): Prisma.Decimal | null {
   const raw = process.env[name]?.trim();
-  if (!raw) return fallback;
+  if (!raw) return null;
+  try {
+    const d = new Prisma.Decimal(raw);
+    if (d.lte(0)) return null;
+    return d;
+  } catch {
+    return null;
+  }
+}
+
+function parseOptionalIntEnv(name: string): number | null {
+  const raw = process.env[name]?.trim();
+  if (!raw) return null;
   const n = Number.parseInt(raw, 10);
-  return Number.isFinite(n) && n > 0 ? n : fallback;
+  return Number.isFinite(n) && n > 0 ? n : null;
 }
 
 export function getWithdrawalLimitsConfig(): WithdrawalLimitsConfig {
   return {
     minAmount: parseDecimal("WITHDRAWAL_MIN_AMOUNT", "1"),
-    maxSingleAmount: parseDecimal("WITHDRAWAL_MAX_SINGLE_AMOUNT", "5000"),
-    maxDailyAmount: parseDecimal("WITHDRAWAL_MAX_DAILY_AMOUNT", "10000"),
-    maxDailyCount: parseIntEnv("WITHDRAWAL_MAX_DAILY_COUNT", 5),
+    maxSingleAmount: parseOptionalDecimal("WITHDRAWAL_MAX_SINGLE_AMOUNT"),
+    maxDailyAmount: parseOptionalDecimal("WITHDRAWAL_MAX_DAILY_AMOUNT"),
+    maxDailyCount: parseOptionalIntEnv("WITHDRAWAL_MAX_DAILY_COUNT"),
   };
 }
 
@@ -54,11 +69,15 @@ export async function assertWithdrawalWithinLimits(
       `Minimum withdrawal is GHS ${limits.minAmount.toFixed(2)}`,
     );
   }
-  if (amount.gt(limits.maxSingleAmount)) {
+  if (limits.maxSingleAmount && amount.gt(limits.maxSingleAmount)) {
     throw new BadRequestException(
       `Maximum single withdrawal is GHS ${limits.maxSingleAmount.toFixed(2)}`,
     );
   }
+
+  const needsDailyQuery =
+    limits.maxDailyCount != null || limits.maxDailyAmount != null;
+  if (!needsDailyQuery) return;
 
   const startOfDay = new Date();
   startOfDay.setHours(0, 0, 0, 0);
@@ -79,19 +98,21 @@ export async function assertWithdrawalWithinLimits(
     select: { amount: true },
   });
 
-  if (today.length >= limits.maxDailyCount) {
+  if (limits.maxDailyCount != null && today.length >= limits.maxDailyCount) {
     throw new BadRequestException(
       `Daily withdrawal limit reached (${limits.maxDailyCount} per day)`,
     );
   }
 
-  const dailyTotal = today.reduce(
-    (sum, row) => sum.add(row.amount),
-    new Prisma.Decimal(0),
-  );
-  if (dailyTotal.add(amount).gt(limits.maxDailyAmount)) {
-    throw new BadRequestException(
-      `Daily withdrawal limit is GHS ${limits.maxDailyAmount.toFixed(2)}`,
+  if (limits.maxDailyAmount) {
+    const dailyTotal = today.reduce(
+      (sum, row) => sum.add(row.amount),
+      new Prisma.Decimal(0),
     );
+    if (dailyTotal.add(amount).gt(limits.maxDailyAmount)) {
+      throw new BadRequestException(
+        `Daily withdrawal limit is GHS ${limits.maxDailyAmount.toFixed(2)}`,
+      );
+    }
   }
 }

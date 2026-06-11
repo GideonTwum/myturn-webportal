@@ -7,7 +7,8 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useRouter, useSegments } from "expo-router";
+import { useQueryClient } from "@tanstack/react-query";
+import { useRouter } from "expo-router";
 import type { AuthUser, OtpRequestResponse } from "@myturn/api-client";
 import { resolveAccessToken } from "@myturn/api-client";
 import { IS_MOCK_UI } from "@/constants/app-mode";
@@ -25,6 +26,7 @@ type AuthState = {
   token: string | null;
   user: AuthUser | null;
   isLoading: boolean;
+  isAuthenticated: boolean;
   applySession: (accessToken: string, authUser: AuthUser) => Promise<void>;
   requestOtp: (phone: string) => Promise<OtpRequestResponse>;
   signInWithOtp: (phone: string, code: string) => Promise<void>;
@@ -39,22 +41,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
-  const segments = useSegments();
+  const queryClient = useQueryClient();
 
   const signOut = useCallback(async () => {
     await clearSession();
     setToken(null);
     setUser(null);
-    router.replace("/(onboarding)/phone");
-  }, [router]);
+    queryClient.removeQueries({ queryKey: ["member"] });
+    queryClient.removeQueries({ queryKey: ["invite"] });
+    router.replace("/(main)/home");
+  }, [router, queryClient]);
 
   useEffect(() => {
     setUnauthorizedHandler(() => {
       setToken(null);
       setUser(null);
-      router.replace("/(onboarding)/phone");
+      queryClient.removeQueries({ queryKey: ["member"] });
+      queryClient.removeQueries({ queryKey: ["invite"] });
+      router.replace("/(main)/home");
     });
-  }, [router]);
+  }, [router, queryClient]);
 
   useEffect(() => {
     let mounted = true;
@@ -69,16 +75,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       mounted = false;
     };
   }, []);
-
-  useEffect(() => {
-    if (isLoading || IS_MOCK_UI) return;
-    const root = segments[0];
-    const publicRoutes = ["invite", "(onboarding)", "index", "payment", "notifications"];
-    const inPublic = publicRoutes.includes(String(root));
-    if (!token && !inPublic) {
-      router.replace("/(onboarding)/phone");
-    }
-  }, [token, segments, isLoading, router]);
 
   const applySession = useCallback(async (accessToken: string, authUser: AuthUser) => {
     await setSession(accessToken, authUser);
@@ -120,18 +116,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser({ ...me, canContribute: trust.unlocks.canContribute });
   }, [token]);
 
+  const isAuthenticated = IS_MOCK_UI || Boolean(token);
+
   const value = useMemo(
     () => ({
       token,
       user,
       isLoading,
+      isAuthenticated,
       applySession,
       requestOtp,
       signInWithOtp,
       signOut,
       refreshProfile,
     }),
-    [token, user, isLoading, applySession, requestOtp, signInWithOtp, signOut, refreshProfile],
+    [
+      token,
+      user,
+      isLoading,
+      isAuthenticated,
+      applySession,
+      requestOtp,
+      signInWithOtp,
+      signOut,
+      refreshProfile,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

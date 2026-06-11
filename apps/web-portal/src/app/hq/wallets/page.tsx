@@ -64,14 +64,33 @@ export default function HqWalletsPage() {
         />
         <StatCard
           icon={Scale}
-          label="Member wallet liabilities"
+          label="Member wallet (available)"
+          value={isLoading ? "—" : money(data?.totalMemberWalletAvailable)}
+          loading={isLoading}
+        />
+        <StatCard
+          icon={Scale}
+          label="Contribution Guarantee Reserve"
+          value={isLoading ? "—" : money(data?.totalMemberWalletReserved)}
+          loading={isLoading}
+        />
+        <StatCard
+          icon={Scale}
+          label="Member wallet liabilities (total)"
           value={isLoading ? "—" : money(data?.totalMemberWalletLiabilities)}
           loading={isLoading}
         />
         <StatCard
           icon={Scale}
-          label="Admin earnings liabilities"
-          value={isLoading ? "—" : money(data?.totalAdminEarningsLiabilities)}
+          label="Legacy admin earnings liabilities"
+          value={
+            isLoading
+              ? "—"
+              : money(
+                  data?.legacyAdminEarningsLiabilities ??
+                    data?.totalAdminEarningsLiabilities,
+                )
+          }
           loading={isLoading}
         />
         <StatCard
@@ -102,9 +121,24 @@ export default function HqWalletsPage() {
         />
       </div>
 
+      {data?.contributionGuaranteeReserves ? (
+        <div className="rounded-xl border bg-white p-4 text-sm text-gray-700">
+          <h2 className="font-semibold text-gray-900">Contribution Guarantee Reserve</h2>
+          <p className="mt-1">
+            Active reserves: {data.contributionGuaranteeReserves.activeReserveCount} ·
+            Reserved liabilities:{" "}
+            {money(data.contributionGuaranteeReserves.totalReservedLiabilities)} ·
+            Released to date:{" "}
+            {money(data.contributionGuaranteeReserves.totalReleasedAmount)}
+          </p>
+        </div>
+      ) : null}
+
       <div className="rounded-xl border bg-white p-4 text-sm text-gray-600">
         <p>
-          Member and admin earnings withdrawals are automatic via MTN disbursement.
+          Member withdrawals are automatic via MTN disbursement. Contribution
+          Guarantee Reserve unlocks automatically as members make successful
+          contributions after payout. Admin earnings are deprecated.
           HQ monitors{" "}
           <a href="/hq/withdrawals" className="font-medium text-brand-green">
             withdrawal status

@@ -5,7 +5,6 @@ import {
 } from "@nestjs/common";
 import {
   ContributionStatus,
-  GroupStatus,
   PaymentStatus,
   PaymentType,
   PayoutStatus,
@@ -13,9 +12,9 @@ import {
   UserRole,
 } from "@prisma/client";
 import { summarizeCycle } from "@myturn/shared";
-import { memberCyclePaymentDays } from "../common/member-cycle-payment-days";
 import { PrismaService } from "../prisma/prisma.service";
 import { WalletsService } from "../wallets/wallets.service";
+import { ContributionGuaranteeReserveService } from "./contribution-guarantee-reserve.service";
 import { LedgerAccountService } from "./ledger-account.service";
 import { LedgerPostingService } from "./ledger-posting.service";
 
@@ -49,6 +48,7 @@ export class FinancialAllocationService {
     private accounts: LedgerAccountService,
     private posting: LedgerPostingService,
     private wallets: WalletsService,
+    private reserve: ContributionGuaranteeReserveService,
   ) {}
 
   /**
@@ -96,7 +96,7 @@ export class FinancialAllocationService {
           where: { externalRef: ctx.externalRef },
         });
         if (dup) {
-          return { payment: dup, duplicate: true as const };
+          return { payment: dup, duplicate: true as const, reserveRelease: null };
         }
       }
 
@@ -147,14 +147,29 @@ export class FinancialAllocationService {
         ],
       });
 
-      return { payment, duplicate: false as const };
+      const reserveRelease =
+        await this.reserve.tryReleaseOnPaymentSettledInTx(tx, {
+          userId: contribution.userId,
+          groupId: contribution.groupId,
+          contributionId: contribution.id,
+          paymentId: payment.id,
+          cycleNumber: contribution.cycleNumber,
+          paidDayIndex: ctx.paidDayIndex,
+        });
+
+      return { payment, duplicate: false as const, reserveRelease };
     });
+
+    if (result.reserveRelease?.released) {
+      await this.reserve.notifyReserveReleased(result.reserveRelease);
+      await this.syncLegacyMemberWallet(contribution.userId);
+    }
 
     return result;
   }
 
   /**
-   * Allocate cycle gross pool to recipient wallet, admin earnings, and MyTurn revenue.
+   * Allocate cycle gross pool to recipient available/reserved wallets and MyTurn revenue.
    */
   async allocateCycleFinalizationInTx(
     tx: Prisma.TransactionClient,
@@ -168,6 +183,8 @@ export class FinancialAllocationService {
       memberCount: number;
       serviceMarginBps: number;
       daysPerCycle: number;
+      payoutPosition: number;
+      totalPositions: number;
     },
   ) {
     const contributionMinor = toMinor(params.contributionPerDay);
@@ -184,16 +201,36 @@ export class FinancialAllocationService {
     const adminShare = fromMinor(summary.adminShareMinor);
     const platformShare = fromMinor(summary.platformShareMinor);
 
+    const split = this.reserve.computeSplit(
+      summary.netAfterMarginMinor,
+      params.payoutPosition,
+      params.totalPositions,
+      params.daysPerCycle,
+    );
+    const available = fromMinor(split.availableMinor);
+    const reserveAmount = fromMinor(split.reserveMinor);
+
+    await this.reserve.ensureLegacyWalletMigratedInTx(tx, params.recipientUserId);
+
     const groupPool = await this.accounts.getOrCreateGroupPool(params.groupId, tx);
-    const memberWallet = await this.accounts.getOrCreateMemberWallet(
+    const memberAvailable = await this.accounts.getOrCreateMemberWalletAvailable(
       params.recipientUserId,
       tx,
     );
-    const adminEarnings = await this.accounts.getOrCreateAdminEarnings(
-      params.adminUserId,
+    const memberReserved = await this.accounts.getOrCreateMemberWalletReserved(
+      params.recipientUserId,
       tx,
     );
     const myturnRevenue = await this.accounts.getOrCreateMyturnRevenue(tx);
+
+    const lines: { accountId: string; delta: Prisma.Decimal }[] = [
+      { accountId: groupPool.id, delta: gross.mul(-1) },
+      { accountId: memberAvailable.id, delta: available },
+      { accountId: myturnRevenue.id, delta: platformShare },
+    ];
+    if (split.reserveMinor > 0n) {
+      lines.push({ accountId: memberReserved.id, delta: reserveAmount });
+    }
 
     await this.posting.postJournalInTx(tx, {
       idempotencyKey: `allocation:cycle-finalize:${params.payoutId}`,
@@ -205,34 +242,76 @@ export class FinancialAllocationService {
         cycleNumber: params.cycleNumber,
         gross: gross.toString(),
         net: net.toString(),
-        adminShare: adminShare.toString(),
+        available: available.toString(),
+        reserved: reserveAmount.toString(),
+        reserveBps: split.reserveBps,
+        adminShare: "0",
         platformShare: platformShare.toString(),
+        marginModel: "myturn-100",
       },
-      lines: [
-        { accountId: groupPool.id, delta: gross.mul(-1) },
-        { accountId: memberWallet.id, delta: net },
-        { accountId: adminEarnings.id, delta: adminShare },
-        { accountId: myturnRevenue.id, delta: platformShare },
-      ],
+      lines,
+    });
+
+    const reserveRecord = await this.reserve.createReserveOnPayoutInTx(tx, {
+      userId: params.recipientUserId,
+      groupId: params.groupId,
+      payoutId: params.payoutId,
+      cycleNumber: params.cycleNumber,
+      payoutPosition: params.payoutPosition,
+      totalPositions: params.totalPositions,
+      paymentUnitsPerCycle: params.daysPerCycle,
+      netPayoutMinor: summary.netAfterMarginMinor,
+      split,
     });
 
     await this.syncLegacyMemberWallet(params.recipientUserId, tx);
 
-    return { summary, gross, net, adminShare, platformShare };
+    return {
+      summary,
+      gross,
+      net,
+      adminShare,
+      platformShare,
+      availableAmount: available,
+      reserveAmount,
+      reserveBps: split.reserveBps,
+      reserveRecordId: reserveRecord?.id ?? null,
+    };
   }
 
   async syncLegacyMemberWallet(userId: string, tx?: Prisma.TransactionClient) {
     const db = tx ?? this.prisma;
-    const account = await this.accounts.getOrCreateMemberWallet(userId, tx);
+    if (tx) {
+      await this.reserve.ensureLegacyWalletMigratedInTx(tx, userId);
+    } else {
+      await this.prisma.$transaction((inner) =>
+        this.reserve.ensureLegacyWalletMigratedInTx(inner, userId),
+      );
+    }
+
+    const [available, reserved] = await Promise.all([
+      this.accounts.getOrCreateMemberWalletAvailable(userId, tx),
+      this.accounts.getOrCreateMemberWalletReserved(userId, tx),
+    ]);
+    const total = new Prisma.Decimal(available.balance.toString()).add(
+      reserved.balance,
+    );
     await this.wallets.getOrCreate(userId);
     await db.wallet.update({
       where: { userId },
-      data: { balance: account.balance, currency: account.currency },
+      data: { balance: total, currency: available.currency },
     });
   }
 
   async getMemberWalletSummary(userId: string) {
-    const account = await this.accounts.getOrCreateMemberWallet(userId);
+    await this.prisma.$transaction((tx) =>
+      this.reserve.ensureLegacyWalletMigratedInTx(tx, userId),
+    );
+
+    const [availableAcct, reservedAcct] = await Promise.all([
+      this.accounts.getOrCreateMemberWalletAvailable(userId),
+      this.accounts.getOrCreateMemberWalletReserved(userId),
+    ]);
     await this.syncLegacyMemberWallet(userId);
 
     const pending = await this.prisma.withdrawalRequest.aggregate({
@@ -257,23 +336,65 @@ export class FinancialAllocationService {
       _sum: { amount: true },
     });
 
+    const activeReserves = await this.reserve.listActiveForUser(userId);
+
+    const availableBal = new Prisma.Decimal(availableAcct.balance.toString());
+    const reservedBal = new Prisma.Decimal(reservedAcct.balance.toString());
+    const totalBal = availableBal.add(reservedBal);
     const pendingSum = pending._sum.amount ?? new Prisma.Decimal(0);
-    const balance = new Prisma.Decimal(account.balance.toString());
-    const available = Prisma.Decimal.max(balance.sub(pendingSum), new Prisma.Decimal(0));
+    const withdrawable = Prisma.Decimal.max(
+      availableBal.sub(pendingSum),
+      new Prisma.Decimal(0),
+    );
+
+    const reserveDetails = activeReserves.map((r) => ({
+      groupId: r.groupId,
+      groupName: r.group.name,
+      payoutCycle: r.cycleNumber,
+      ...this.reserve.mapReserveRow(r),
+    }));
+
+    const nextReserveUnlockAmount =
+      reserveDetails.length > 0
+        ? reserveDetails[0]!.nextUnlockAmount
+        : "0.00";
+
+    const totalOriginal = activeReserves.reduce(
+      (s, r) => s + Number(r.originalReserveAmount),
+      0,
+    );
+    const totalReleased = activeReserves.reduce(
+      (s, r) => s + Number(r.releasedAmount),
+      0,
+    );
+    const reserveProgress =
+      totalOriginal > 0
+        ? Math.round((totalReleased / totalOriginal) * 100)
+        : 100;
 
     return {
-      accountId: account.id,
-      currency: account.currency,
-      balance: balance.toFixed(2),
-      availableBalance: available.toFixed(2),
+      accountId: availableAcct.id,
+      currency: availableAcct.currency,
+      balance: totalBal.toFixed(2),
+      availableBalance: withdrawable.toFixed(2),
+      reservedBalance: reservedBal.toFixed(2),
+      totalBalance: totalBal.toFixed(2),
       pendingWithdrawals: pendingSum.toFixed(2),
+      nextReserveUnlockAmount,
+      activeReserveCount: activeReserves.length,
+      reserveProgress,
+      reserveDetails,
       totalPayoutsCredited: creditedPayouts._sum.amount?.toFixed(2) ?? "0.00",
       payoutsCreditedCount: creditedPayouts._count.id,
       totalWithdrawn: completedWithdrawals._sum.amount?.toFixed(2) ?? "0.00",
     };
   }
 
+  /**
+   * @deprecated Admin earnings wallets removed. Returns zeros + deprecation notice.
+   */
   async getAdminWalletSummary(adminId: string) {
+    void adminId;
     const account = await this.accounts.getOrCreateAdminEarnings(adminId);
 
     const pending = await this.prisma.withdrawalRequest.aggregate({
@@ -299,14 +420,19 @@ export class FinancialAllocationService {
     const available = Prisma.Decimal.max(balance.sub(pendingSum), new Prisma.Decimal(0));
 
     return {
+      deprecated: true,
+      message:
+        "Admin earnings wallets are deprecated. Compensation is managed separately by MyTurn.",
       accountId: account.id,
       currency: account.currency,
-      balance: balance.toFixed(2),
-      availableBalance: available.toFixed(2),
-      pendingWithdrawals: pendingSum.toFixed(2),
-      totalEarningsRecorded:
-        totalEarnings._sum.adminShareAmount?.toFixed(2) ?? "0.00",
+      balance: "0.00",
+      availableBalance: "0.00",
+      pendingWithdrawals: "0.00",
+      totalEarningsRecorded: "0.00",
       totalWithdrawn: completedWithdrawals._sum.amount?.toFixed(2) ?? "0.00",
+      legacyBalance: balance.toFixed(2),
+      legacyEarningsRecorded:
+        totalEarnings._sum.adminShareAmount?.toFixed(2) ?? "0.00",
     };
   }
 

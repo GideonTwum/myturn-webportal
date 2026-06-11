@@ -11,6 +11,7 @@ describe("WithdrawalsService", () => {
   };
   const accounts = {
     getOrCreateMemberWallet: vi.fn(),
+    getOrCreateMemberWalletAvailable: vi.fn(),
     getOrCreateAdminEarnings: vi.fn(),
     getOrCreateWithdrawalClearing: vi.fn(),
     getOrCreateSystemExternal: vi.fn(),
@@ -70,6 +71,9 @@ describe("WithdrawalsService", () => {
       accountId: "acct-admin",
     });
     accounts.getOrCreateMemberWallet.mockResolvedValue({ id: "wallet-member" });
+    accounts.getOrCreateMemberWalletAvailable.mockResolvedValue({
+      id: "wallet-member-available",
+    });
     accounts.getOrCreateAdminEarnings.mockResolvedValue({ id: "wallet-admin" });
     accounts.getOrCreateWithdrawalClearing.mockResolvedValue({ id: "clearing" });
     accounts.getOrCreateSystemExternal.mockResolvedValue({ id: "external" });
@@ -112,15 +116,61 @@ describe("WithdrawalsService", () => {
     };
   }
 
+  it("allows member withdrawal up to full available balance when no platform cap", async () => {
+    allocation.getMemberWalletSummary.mockResolvedValue({
+      availableBalance: "42000.00",
+      reservedBalance: "18000.00",
+      accountId: "acct-member",
+    });
+
+    const pending = baseRow({
+      amount: new Prisma.Decimal("42000.00"),
+    });
+    const processing = baseRow({
+      amount: new Prisma.Decimal("42000.00"),
+      status: WithdrawalStatus.PROCESSING,
+      provider: "mock-disbursement",
+      providerRef: "disb-mock-wd-1",
+    });
+    const completed = baseRow({
+      amount: new Prisma.Decimal("42000.00"),
+      status: WithdrawalStatus.COMPLETED,
+      provider: "mock-disbursement",
+      providerRef: "disb-mock-wd-1",
+      processedAt: new Date(),
+    });
+
+    prisma.withdrawalRequest.create.mockResolvedValue(pending);
+    prisma.withdrawalRequest.findUnique.mockImplementation(async () => processing);
+    prisma.withdrawalRequest.findFirst.mockResolvedValue(processing);
+    prisma.withdrawalRequest.findUniqueOrThrow.mockImplementation(async () => {
+      const u = prisma.withdrawalRequest.update.mock.calls.length;
+      return u > 1 ? completed : processing;
+    });
+    prisma.withdrawalRequest.update
+      .mockResolvedValueOnce(processing)
+      .mockResolvedValueOnce(completed);
+
+    const result = await svc.createMemberWithdrawal(
+      "user-1",
+      "42000.00",
+      "233241234567",
+    );
+
+    expect(result.status).toBe("COMPLETED");
+    expect(result.amount.toString()).toBe("42000");
+  });
+
   it("rejects member withdrawal above available balance", async () => {
     allocation.getMemberWalletSummary.mockResolvedValue({
-      availableBalance: "5.00",
+      availableBalance: "42000.00",
+      reservedBalance: "18000.00",
       accountId: "acct-member",
     });
 
     await expect(
-      svc.createMemberWithdrawal("user-1", "10.00", "233241234567"),
-    ).rejects.toThrow(BadRequestException);
+      svc.createMemberWithdrawal("user-1", "42001.00", "233241234567"),
+    ).rejects.toThrow(/Contribution Guarantee Reserve/);
   });
 
   it("requires verified member before disbursement", async () => {
@@ -293,121 +343,11 @@ describe("WithdrawalsService", () => {
     ).rejects.toThrow(ForbiddenException);
   });
 
-  it("auto-starts admin earnings disbursement and completes in mock mode", async () => {
-    const pending = baseRow({
-      actorRole: WithdrawalActorRole.ADMIN,
-      actorId: "admin-1",
-      ledgerAccountId: "wallet-admin",
-    });
-    const processing = baseRow({
-      actorRole: WithdrawalActorRole.ADMIN,
-      actorId: "admin-1",
-      ledgerAccountId: "wallet-admin",
-      status: WithdrawalStatus.PROCESSING,
-      provider: "mock-disbursement",
-      providerRef: "disb-mock-wd-1",
-    });
-    const completed = baseRow({
-      actorRole: WithdrawalActorRole.ADMIN,
-      actorId: "admin-1",
-      ledgerAccountId: "wallet-admin",
-      status: WithdrawalStatus.COMPLETED,
-      provider: "mock-disbursement",
-      providerRef: "disb-mock-wd-1",
-      processedAt: new Date(),
-    });
-
-    prisma.withdrawalRequest.create.mockResolvedValue(pending);
-    prisma.withdrawalRequest.findUnique.mockImplementation(async () => processing);
-    prisma.withdrawalRequest.findFirst.mockResolvedValue(processing);
-    prisma.withdrawalRequest.findUniqueOrThrow.mockImplementation(async () => {
-      const u = prisma.withdrawalRequest.update.mock.calls.length;
-      return u > 1 ? completed : processing;
-    });
-    prisma.withdrawalRequest.update
-      .mockResolvedValueOnce(processing)
-      .mockResolvedValueOnce(completed);
-
-    const result = await svc.createAdminWithdrawal(
-      "admin-1",
-      "25.00",
-      "233241234567",
-    );
-
-    expect(accounts.getOrCreateAdminEarnings).toHaveBeenCalledWith("admin-1");
-    expect(posting.postTransferInTx).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({
-        idempotencyKey: "withdrawal:hold:wd-1",
-        fromAccountId: "wallet-admin",
-      }),
-    );
-    expect(result.status).toBe("COMPLETED");
-    expect(result.processingMode).toBe("automatic");
-    expect(notifications.create).toHaveBeenCalledWith(
-      "admin-1",
-      "Earnings withdrawal processing",
-      expect.stringContaining("processed automatically"),
-      "WITHDRAWAL_PROCESSING",
-      expect.anything(),
-    );
-  });
-
-  it("leaves admin withdrawal PROCESSING when MTN provider is configured", async () => {
-    const pending = baseRow({
-      actorRole: WithdrawalActorRole.ADMIN,
-      actorId: "admin-1",
-      ledgerAccountId: "wallet-admin",
-    });
-    prisma.withdrawalRequest.create.mockResolvedValue(pending);
-    prisma.withdrawalRequest.findUnique.mockResolvedValue(pending);
-
-    const original = process.env.DISBURSEMENT_PROVIDER;
-    process.env.DISBURSEMENT_PROVIDER = "mtn-momo";
-    const mtnSvc = new WithdrawalsService(
-      prisma as never,
-      accounts as never,
-      posting as never,
-      allocation as never,
-      notifications as never,
-      audit as never,
-      participation as never,
-      idempotency as never,
-    );
-    process.env.DISBURSEMENT_PROVIDER = original;
-
-    const processing = baseRow({
-      actorRole: WithdrawalActorRole.ADMIN,
-      actorId: "admin-1",
-      ledgerAccountId: "wallet-admin",
-      status: WithdrawalStatus.PROCESSING,
-    });
-    const failed = baseRow({
-      actorRole: WithdrawalActorRole.ADMIN,
-      actorId: "admin-1",
-      ledgerAccountId: "wallet-admin",
-      status: WithdrawalStatus.FAILED,
-      failureReason: "MTN MoMo disbursement not configured",
-      processedAt: new Date(),
-    });
-    prisma.withdrawalRequest.findUnique.mockImplementation(async () => processing);
-    prisma.withdrawalRequest.findUniqueOrThrow.mockResolvedValue(processing);
-    prisma.withdrawalRequest.update.mockResolvedValue(failed);
-
-    const result = await mtnSvc.createAdminWithdrawal(
-      "admin-1",
-      "25.00",
-      "233241234567",
-    );
-
-    expect(result.status).toBe("FAILED");
-    expect(posting.postTransferInTx).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({
-        idempotencyKey: "withdrawal:release:wd-1",
-        toAccountId: "wallet-admin",
-      }),
-    );
+  it("rejects new admin earnings withdrawals (deprecated)", async () => {
+    await expect(
+      svc.createAdminWithdrawal("admin-1", "25.00", "233241234567"),
+    ).rejects.toThrow(BadRequestException);
+    expect(prisma.withdrawalRequest.create).not.toHaveBeenCalled();
   });
 
   it("webhook success completes admin earnings withdrawal", async () => {

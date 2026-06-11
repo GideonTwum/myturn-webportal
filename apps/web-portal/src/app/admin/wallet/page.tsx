@@ -1,154 +1,22 @@
 "use client";
 
-import useSWR from "swr";
 import Link from "next/link";
-import { useState } from "react";
-import { Wallet } from "lucide-react";
-import { getMyturnApi } from "@/lib/myturn-api";
-import { swrFetcher, LIVE_POLL_MS } from "@/lib/swr";
-import type { WalletSummary, WithdrawalsListResponse } from "@myturn/api-client";
 
-function statusLabel(status: string, amount: string) {
-  if (status === "COMPLETED") return `GHS ${amount} sent to your MoMo wallet`;
-  if (status === "FAILED") return "Failed — funds returned to earnings wallet";
-  if (status === "PROCESSING") return "Processing automatically…";
-  return status;
-}
-
-export default function AdminWalletPage() {
-  const { data, isLoading, mutate } = useSWR<WalletSummary>(
-    "/admin/wallet",
-    swrFetcher,
-    { refreshInterval: LIVE_POLL_MS },
-  );
-  const { data: withdrawals, mutate: mutateWithdrawals } = useSWR<WithdrawalsListResponse>(
-    "/admin/withdrawals",
-    swrFetcher,
-    { refreshInterval: LIVE_POLL_MS },
-  );
-  const [amount, setAmount] = useState("");
-  const [momo, setMomo] = useState("");
-  const [msg, setMsg] = useState<string | null>(null);
-  const [err, setErr] = useState<string | null>(null);
-
-  const isMock =
-    withdrawals?.disbursementMode === "mock" ||
-    withdrawals?.disbursementMode === "mock-disbursement";
-
-  async function requestWithdrawal() {
-    setMsg(null);
-    setErr(null);
-    try {
-      const result = await getMyturnApi().wallet.adminCreateWithdrawal({
-        amount: amount.trim(),
-        momoNumber: momo.trim(),
-      });
-      setAmount("");
-      if (result && typeof result === "object" && "status" in result) {
-        const s = String((result as { status: string }).status);
-        if (s === "COMPLETED") {
-          setMsg("GHS sent to your MoMo wallet.");
-        } else if (s === "FAILED") {
-          setMsg("Withdrawal failed. Funds returned to your earnings wallet.");
-        } else {
-          setMsg("Your earnings withdrawal is being processed automatically.");
-        }
-      } else {
-        setMsg("Your earnings withdrawal is being processed automatically.");
-      }
-      void mutate();
-      void mutateWithdrawals();
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : "Failed");
-    }
-  }
-
-  const ownWithdrawals = (withdrawals?.withdrawals ?? []).filter(
-    (w) => w.actorRole === "ADMIN",
-  );
-
+/** @deprecated Admin earnings wallet removed. */
+export default function AdminWalletDeprecatedPage() {
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
-      <div className="flex items-center gap-3">
-        <Wallet className="h-8 w-8 text-brand-green" />
-        <div>
-          <h1 className="text-2xl font-semibold text-gray-900">Earnings wallet</h1>
-          <p className="text-sm text-gray-600">
-            Admin share (60% of service margin). Withdrawals are sent to your MoMo
-            wallet automatically.
-          </p>
-        </div>
-      </div>
-
-      <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-        {isLoading ? (
-          <p className="text-gray-500">Loading…</p>
-        ) : (
-          <>
-            <p className="text-sm text-gray-500">Available balance</p>
-            <p className="text-3xl font-bold text-gray-900">
-              GHS {data?.availableBalance ?? "0.00"}
-            </p>
-            <p className="mt-2 text-sm text-gray-600">
-              Total earnings recorded: GHS {data?.totalEarningsRecorded ?? "0.00"} · Pending
-              withdrawals: GHS {data?.pendingWithdrawals ?? "0.00"} · Withdrawn: GHS{" "}
-              {data?.totalWithdrawn ?? "0.00"}
-            </p>
-          </>
-        )}
-      </div>
-
-      <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-        <h2 className="font-semibold text-gray-900">Withdraw earnings to MoMo</h2>
-        <p className="mb-4 text-sm text-gray-600">
-          {isMock
-            ? "Simulated MoMo withdrawal — no real money sent."
-            : "Sent automatically via MTN MoMo disbursement."}{" "}
-          Daily and per-transaction limits apply.
-        </p>
-        <input
-          className="mb-2 w-full rounded-lg border px-3 py-2 text-sm"
-          placeholder="Amount (GHS)"
-          value={amount}
-          onChange={(e) => setAmount(e.target.value)}
-        />
-        <input
-          className="mb-3 w-full rounded-lg border px-3 py-2 text-sm"
-          placeholder="MoMo number"
-          value={momo}
-          onChange={(e) => setMomo(e.target.value)}
-        />
-        <button
-          type="button"
-          onClick={() => void requestWithdrawal()}
-          className="rounded-lg bg-brand-green px-4 py-2 text-sm font-medium text-white"
-        >
-          Withdraw to MoMo
-        </button>
-        {msg ? <p className="mt-3 text-sm text-green-700">{msg}</p> : null}
-        {err ? <p className="mt-3 text-sm text-red-600">{err}</p> : null}
-        <p className="mt-4 text-sm">
-          <Link href="/admin/withdrawals" className="font-medium text-brand-green">
-            View withdrawal history →
-          </Link>
-        </p>
-      </div>
-
-      {ownWithdrawals.length > 0 ? (
-        <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-          <h2 className="font-semibold text-gray-900">Recent withdrawals</h2>
-          <ul className="mt-3 space-y-2 text-sm text-gray-700">
-            {ownWithdrawals.slice(0, 5).map((w) => (
-              <li key={w.id} className="flex justify-between border-b border-gray-100 py-2">
-                <span>{statusLabel(w.status, w.amount)}</span>
-                <span className="text-gray-500">
-                  {new Date(w.requestedAt).toLocaleDateString()}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
+    <div className="mx-auto max-w-lg rounded-xl border border-amber-200 bg-amber-50 p-8 text-center">
+      <h1 className="text-xl font-semibold text-amber-950">Earnings wallet removed</h1>
+      <p className="mt-3 text-sm text-amber-900">
+        Admin earnings wallets are deprecated. Admins are platform operators who
+        work on behalf of MyTurn. Compensation is managed separately by MyTurn
+        operations.
+      </p>
+      <p className="mt-4 text-sm">
+        <Link href="/admin" className="font-medium text-brand-green">
+          ← Back to dashboard
+        </Link>
+      </p>
     </div>
   );
 }

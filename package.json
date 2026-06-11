@@ -29,6 +29,7 @@
     "verify:railway": "node scripts/verify-railway-health.mjs",
     "test:otp": "npm run test:otp -w backend-api && node scripts/test-otp-staging.mjs",
     "db:wipe:local": "npm run db:wipe:local -w backend-api",
+    "cleanup:keep-big-men-group": "npm run cleanup:keep-big-men-group -w backend-api",
     "db:wipe:staging:railway": "npm run db:wipe:staging:railway -w backend-api",
     "test:e2e-staging": "node scripts/e2e-staging-smoke.mjs",
     "test:mtn-collection": "node scripts/test-mtn-collection-sandbox.mjs",

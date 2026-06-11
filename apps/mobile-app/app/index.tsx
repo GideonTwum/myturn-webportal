@@ -30,7 +30,7 @@ export default function SplashScreen() {
       if (invite) {
         router.replace(`/invite/${invite}`);
       } else {
-        router.replace("/(onboarding)/phone");
+        router.replace("/(main)/home");
       }
     }, isLoading ? 3200 : 2400);
     return () => clearTimeout(t);

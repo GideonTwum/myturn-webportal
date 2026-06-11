@@ -133,7 +133,7 @@ export default function AdminPayoutsPage() {
         <p className="text-sm text-gray-600">
           Finalize a cycle after all members have contributed. Net payout is{" "}
           <span className="font-medium text-gray-800">credited to the recipient&apos;s MyTurn wallet</span>
-          ; service margin is split to admin and MyTurn revenue wallets.
+          ; service margin is 100% MyTurn revenue.
         </p>
         <button
           type="button"

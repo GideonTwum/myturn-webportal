@@ -22,38 +22,36 @@ export type NavItem = {
 export const adminNavItems: NavItem[] = [
   {
     href: "/admin",
-    label: "Overview",
+    label: "Dashboard",
     icon: LayoutDashboard,
-    section: "Admin",
+    section: "Platform operator",
   },
-  { href: "/admin/groups", label: "Groups", icon: Building2, section: "Admin" },
+  { href: "/admin/groups", label: "Groups", icon: Building2, section: "Platform operator" },
   {
     href: "/admin/create-group",
     label: "Create group",
     icon: FileText,
-    section: "Admin",
+    section: "Platform operator",
   },
   {
     href: "/admin/contributions",
     label: "Contributions",
     icon: CreditCard,
-    section: "Admin",
+    section: "Platform operator",
   },
   {
     href: "/admin/payments",
     label: "Payments",
     icon: PieChart,
-    section: "Admin",
+    section: "Platform operator",
   },
-  { href: "/admin/payouts", label: "Payouts", icon: Wallet, section: "Admin" },
-  { href: "/admin/wallet", label: "Earnings wallet", icon: Wallet, section: "Admin" },
+  { href: "/admin/payouts", label: "Payouts", icon: Wallet, section: "Platform operator" },
   {
     href: "/admin/withdrawals",
     label: "Member withdrawals",
     icon: ArrowLeftRight,
-    section: "Admin",
+    section: "Platform operator",
   },
-  { href: "/admin/earnings", label: "Earnings", icon: Users, section: "Admin" },
 ];
 
 export const hqNavItems: NavItem[] = [
@@ -126,9 +124,7 @@ const ADMIN_TITLES: Record<string, string> = {
   "/admin/create-group": "Create group",
   "/admin/contributions": "Contributions",
   "/admin/payouts": "Payouts",
-  "/admin/wallet": "Earnings wallet",
   "/admin/withdrawals": "Member withdrawals",
-  "/admin/earnings": "Earnings",
 };
 
 const HQ_TITLES: Record<string, string> = {

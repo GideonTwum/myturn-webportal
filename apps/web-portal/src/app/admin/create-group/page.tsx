@@ -3,10 +3,9 @@
 import { useRouter } from "next/navigation";
 import { FormEvent, useMemo, useState } from "react";
 import {
-  ADMIN_SHARE_PERCENTAGE,
   computeGroupFinancePreview,
   formatGhs,
-  MYTURN_SHARE_PERCENTAGE,
+  MYTURN_REVENUE_PERCENTAGE,
   PayoutMode,
   RECOMMENDED_SERVICE_MARGIN_BPS,
 } from "@myturn/shared";
@@ -116,8 +115,8 @@ export default function CreateGroupPage() {
       <div className="min-w-0 flex-1">
         <p className="text-sm text-gray-600">
           Amounts in GHS. Choose a service margin within the allowed range for
-          your pool size. Margin split is fixed at {ADMIN_SHARE_PERCENTAGE}% admin
-          / {MYTURN_SHARE_PERCENTAGE}% MyTurn HQ.
+          your pool size. Service margin revenue goes {MYTURN_REVENUE_PERCENTAGE}%
+          to MyTurn.
         </p>
 
         <form

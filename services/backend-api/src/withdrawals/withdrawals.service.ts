@@ -77,29 +77,58 @@ export class WithdrawalsService {
     return run();
   }
 
+  /** @deprecated Admin earnings wallets removed — compensation managed separately by MyTurn. */
   async createAdminWithdrawal(
     adminId: string,
     amount: string,
     momoNumber: string,
     clientIdempotencyKey?: string,
   ) {
-    const run = async () => {
-      const row = await this.createWithdrawalHold({
-        actorId: adminId,
-        actorRole: WithdrawalActorRole.ADMIN,
-        amount,
-        momoNumber,
-        automatic: true,
-      });
-      return this.startAutomaticDisbursement(row.id);
-    };
+    void adminId;
+    void amount;
+    void momoNumber;
+    void clientIdempotencyKey;
+    throw new BadRequestException(
+      "Admin earnings wallets are deprecated. Compensation is managed separately by MyTurn.",
+    );
+  }
 
-    if (clientIdempotencyKey?.trim()) {
-      const key = `withdrawal:create:${adminId}:${clientIdempotencyKey.trim()}`;
-      const result = await this.idempotency.runOnce(key, 3600, run);
-      return result.value;
+  /** Member withdrawals in groups managed by this admin (monitoring only). */
+  async listMemberWithdrawalsForAdmin(adminId: string, status?: WithdrawalStatus) {
+    const memberIds = await this.memberIdsForAdmin(adminId);
+    if (memberIds.length === 0) {
+      return {
+        withdrawals: [],
+        disbursementMode: isMockDisbursementProvider() ? "mock" : this.disbursement.name,
+      };
     }
-    return run();
+    const rows = await this.prisma.withdrawalRequest.findMany({
+      where: {
+        actorId: { in: memberIds },
+        actorRole: WithdrawalActorRole.MEMBER,
+        ...(status ? { status } : {}),
+      },
+      orderBy: { createdAt: "desc" },
+      take: 200,
+    });
+    const users = await this.prisma.user.findMany({
+      where: { id: { in: [...new Set(rows.map((r) => r.actorId))] } },
+      select: { id: true, firstName: true, lastName: true },
+    });
+    const nameById = new Map(
+      users.map((u) => [
+        u.id,
+        [u.firstName, u.lastName].filter(Boolean).join(" ").trim() || "Member",
+      ]),
+    );
+    return {
+      withdrawals: rows.map((r) => ({
+        ...this.toDto(r),
+        actorName: nameById.get(r.actorId) ?? "Member",
+        processingMode: "automatic",
+      })),
+      disbursementMode: isMockDisbursementProvider() ? "mock" : this.disbursement.name,
+    };
   }
 
   private async createWithdrawalHold(params: {
@@ -109,7 +138,7 @@ export class WithdrawalsService {
     momoNumber: string;
     automatic: boolean;
   }) {
-    const amountDec = new Prisma.Decimal(params.amount);
+    const amountDec = new Prisma.Decimal(params.amount.replace(/,/g, "").trim());
     if (amountDec.lte(0)) {
       throw new BadRequestException("Amount must be positive");
     }
@@ -123,7 +152,25 @@ export class WithdrawalsService {
         ? await this.allocation.getMemberWalletSummary(params.actorId)
         : await this.allocation.getAdminWalletSummary(params.actorId);
 
-    if (new Prisma.Decimal(summary.availableBalance).lt(amountDec)) {
+    const availableDec = new Prisma.Decimal(summary.availableBalance);
+    if (availableDec.lt(amountDec)) {
+      if (params.actorRole === WithdrawalActorRole.MEMBER) {
+        const reservedDec = new Prisma.Decimal(
+          "reservedBalance" in summary && summary.reservedBalance
+            ? summary.reservedBalance
+            : "0",
+        );
+        if (reservedDec.gt(0)) {
+          throw new BadRequestException(
+            `You can withdraw up to GHS ${availableDec.toFixed(2)} right now. ` +
+              `GHS ${reservedDec.toFixed(2)} is held as your Contribution Guarantee Reserve — ` +
+              `this protects your group and unlocks gradually as you keep paying your contributions.`,
+          );
+        }
+        throw new BadRequestException(
+          `Insufficient available balance. You can withdraw up to GHS ${availableDec.toFixed(2)}.`,
+        );
+      }
       throw new BadRequestException("Insufficient available balance");
     }
 
@@ -136,7 +183,7 @@ export class WithdrawalsService {
 
     const sourceAccount =
       params.actorRole === WithdrawalActorRole.MEMBER
-        ? await this.accounts.getOrCreateMemberWallet(params.actorId)
+        ? await this.accounts.getOrCreateMemberWalletAvailable(params.actorId)
         : await this.accounts.getOrCreateAdminEarnings(params.actorId);
 
     return this.prisma.$transaction(async (tx) => {

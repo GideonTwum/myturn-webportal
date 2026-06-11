@@ -98,10 +98,20 @@ enum LedgerAccountType {
   SYSTEM_EXTERNAL
   PLATFORM_FLOAT
   GROUP_POOL
+  /** @deprecated Migrated to MEMBER_WALLET_AVAILABLE — legacy balances may remain. */
   MEMBER_WALLET
+  MEMBER_WALLET_AVAILABLE
+  MEMBER_WALLET_RESERVED
   ADMIN_EARNINGS
   MYTURN_REVENUE
   WITHDRAWAL_CLEARING
+}
+
+enum ContributionGuaranteeReserveStatus {
+  ACTIVE
+  RELEASED
+  FORFEITED
+  CANCELLED
 }
 
 enum WithdrawalStatus {
@@ -186,6 +196,7 @@ model User {
   adminRequests     AdminRequest[]    @relation("AdminRequestApplicant")
   reviewedRequests  AdminRequest[]    @relation("AdminRequestReviewer")
   adminEarnings     AdminEarning[]
+  contributionGuaranteeReserves ContributionGuaranteeReserve[]
   notifications     Notification[]
   deviceTokens      DeviceToken[]
   auditLogs         AuditLog[]        @relation("AuditActor")
@@ -238,6 +249,7 @@ model Group {
   payments        Payment[]
   paymentRequests PaymentRequest[]
   adminEarnings   AdminEarning[]
+  contributionGuaranteeReserves ContributionGuaranteeReserve[]
 }
 
 model GroupMember {
@@ -317,8 +329,38 @@ model Payout {
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
 
+  contributionGuaranteeReserve ContributionGuaranteeReserve?
+
   @@unique([groupId, cycleNumber])
   @@index([groupId, cycleNumber])
+}
+
+/** Post-payout contribution guarantee — reserved wallet balance released per successful contribution. */
+model ContributionGuaranteeReserve {
+  id                                 String                            @id @default(cuid())
+  userId                             String
+  user                               User                              @relation(fields: [userId], references: [id])
+  groupId                            String
+  group                              Group                             @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  payoutId                           String                            @unique
+  payout                             Payout                            @relation(fields: [payoutId], references: [id], onDelete: Cascade)
+  cycleNumber                        Int
+  payoutPosition                     Int
+  originalReserveAmount              Decimal                           @db.Decimal(18, 2)
+  remainingReserveAmount             Decimal                           @db.Decimal(18, 2)
+  releasedAmount                     Decimal                           @default(0) @db.Decimal(18, 2)
+  releasePerContributionAmount       Decimal                           @db.Decimal(18, 2)
+  remainingContributionCountAtCreation Int
+  contributionsReleasedCount         Int                               @default(0)
+  reserveBps                         Int
+  status                             ContributionGuaranteeReserveStatus @default(ACTIVE)
+  metadata                           Json?
+  createdAt                          DateTime                          @default(now())
+  updatedAt                          DateTime                          @updatedAt
+
+  @@index([userId, groupId, status])
+  @@index([groupId, status])
+  @@index([status])
 }
 
 model Wallet {

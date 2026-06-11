@@ -18,6 +18,9 @@ import { FinancialAllocationService } from "../ledger-accounts/financial-allocat
 import { ConfirmWithdrawalDto, CreateWithdrawalDto, FailWithdrawalDto } from "./dto/create-withdrawal.dto";
 import { WithdrawalsService } from "./withdrawals.service";
 
+const ADMIN_WALLET_DEPRECATED =
+  "Admin earnings wallets are deprecated. Compensation is managed separately by MyTurn.";
+
 type AuthedReq = { user: { sub: string; role: UserRole } };
 
 @Controller("admin")
@@ -29,17 +32,23 @@ export class AdminWalletController {
     private allocation: FinancialAllocationService,
   ) {}
 
+  /** @deprecated Admin earnings wallet removed. */
   @Get("wallet")
   wallet(@Req() req: AuthedReq) {
     return this.allocation.getAdminWalletSummary(req.user.sub);
   }
 
+  /** @deprecated Admin earnings wallet removed. */
   @Get("wallet/activity")
   async activity(@Req() req: AuthedReq) {
-    const summary = await this.allocation.getAdminWalletSummary(req.user.sub);
-    return this.allocation.listAccountActivity(summary.accountId);
+    return {
+      deprecated: true,
+      message: ADMIN_WALLET_DEPRECATED,
+      activity: [],
+    };
   }
 
+  /** @deprecated Admin earnings withdrawals removed. */
   @Post("withdrawals")
   create(
     @Req() req: AuthedReq,
@@ -54,9 +63,28 @@ export class AdminWalletController {
     );
   }
 
+  /**
+   * @deprecated Use GET /admin/member-withdrawals for member monitoring.
+   * Returns deprecation notice; no new admin earnings withdrawals.
+   */
   @Get("withdrawals")
   list(@Req() req: AuthedReq, @Query("status") status?: WithdrawalStatus) {
-    return this.withdrawals.listForAdmin(req.user.sub, status);
+    return {
+      deprecated: true,
+      message: ADMIN_WALLET_DEPRECATED,
+      withdrawals: [],
+      memberWithdrawalsUrl: "/admin/member-withdrawals",
+      ...(status ? {} : {}),
+    };
+  }
+
+  /** Monitor automatic member withdrawals in admin's groups. */
+  @Get("member-withdrawals")
+  listMemberWithdrawals(
+    @Req() req: AuthedReq,
+    @Query("status") status?: WithdrawalStatus,
+  ) {
+    return this.withdrawals.listMemberWithdrawalsForAdmin(req.user.sub, status);
   }
 }
 

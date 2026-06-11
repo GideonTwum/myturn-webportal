@@ -1,5 +1,11 @@
 import { Injectable } from "@nestjs/common";
-import { GroupStatus, PayoutStatus } from "@prisma/client";
+import {
+  ContributionStatus,
+  GhanaCardVerificationStatus,
+  GroupStatus,
+  PayoutStatus,
+  UserRole,
+} from "@prisma/client";
 import { Decimal } from "@prisma/client/runtime/library";
 import { PrismaService } from "../prisma/prisma.service";
 
@@ -8,6 +14,10 @@ function decStr(v: Decimal | null | undefined): string {
   return v.toFixed(2);
 }
 
+/**
+ * Admin dashboard — platform operator view (no financial wallet / earnings).
+ * Future compensation handled separately by MyTurn operations.
+ */
 @Injectable()
 export class AdminOverviewService {
   constructor(private prisma: PrismaService) {}
@@ -17,25 +27,41 @@ export class AdminOverviewService {
     const groups = await this.prisma.group.findMany({
       where: { adminId },
       select: {
+        id: true,
         status: true,
+        currentCycle: true,
         _count: { select: { members: true } },
       },
     });
 
-    const [earningsAgg, payoutAgg] = await Promise.all([
-      this.prisma.adminEarning.aggregate({
-        where: { adminId },
-        _sum: { adminShareAmount: true },
-      }),
-      this.prisma.payout.aggregate({
-        where: {
-          group: { adminId },
-          status: PayoutStatus.COMPLETED,
-        },
-        _sum: { amount: true },
-        _count: { id: true },
-      }),
-    ]);
+    const groupIds = groups.map((g) => g.id);
+
+    const [payoutAgg, pendingContributions, pendingVerifications] =
+      await Promise.all([
+        this.prisma.payout.aggregate({
+          where: {
+            group: { adminId },
+            status: PayoutStatus.COMPLETED,
+          },
+          _sum: { amount: true },
+          _count: { id: true },
+        }),
+        groupIds.length > 0
+          ? this.prisma.contribution.count({
+              where: {
+                groupId: { in: groupIds },
+                status: ContributionStatus.PENDING,
+              },
+            })
+          : Promise.resolve(0),
+        this.prisma.user.count({
+          where: {
+            role: UserRole.USER,
+            ghanaCardVerificationStatus: GhanaCardVerificationStatus.PENDING,
+            groupMemberships: { some: { group: { adminId } } },
+          },
+        }),
+      ]);
 
     return {
       groupsCreated: groups.length,
@@ -45,9 +71,12 @@ export class AdminOverviewService {
         (g) => g.status === GroupStatus.COMPLETED,
       ).length,
       totalMembers: groups.reduce((a, g) => a + g._count.members, 0),
-      totalMarginEarningsGhs: decStr(earningsAgg._sum.adminShareAmount),
+      pendingContributions,
+      pendingVerifications,
       completedPayoutsCount: payoutAgg._count.id,
       totalPaidToMembersGhs: decStr(payoutAgg._sum.amount),
+      /** @deprecated Always 0 — admin margin share removed. */
+      totalMarginEarningsGhs: "0.00",
     };
   }
 
