@@ -1,0 +1,22 @@
+﻿node : TypeError: fetch failed
+At C:\Users\Gideon\AppData\Local\Temp\ps-script-0dfc4b36-c94d-4957-855b-c9844b86c38e.ps1:110 char:59
++ ... ces\backend-api"; node scripts/chaos-local-financial.mjs 2>&1 | Out-F ...
++                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (TypeError: fetch failed:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+    at node:internal/deps/undici/undici:14902:13
+    at async api (file:///C:/Users/Gideon/Desktop/myturn/services/backend-api/scripts/chaos-local-financial.mjs:38:15)
+    at async payAllDays 
+(file:///C:/Users/Gideon/Desktop/myturn/services/backend-api/scripts/chaos-local-financial.mjs:104:17)
+    at async runTestA 
+(file:///C:/Users/Gideon/Desktop/myturn/services/backend-api/scripts/chaos-local-financial.mjs:172:3)
+    at async main 
+(file:///C:/Users/Gideon/Desktop/myturn/services/backend-api/scripts/chaos-local-financial.mjs:601:3) {
+  [cause]: Error: read ECONNRESET
+      at TCP.onStreamRead (node:internal/stream_base_commons:216:20) {
+    errno: -4077,
+    code: 'ECONNRESET',
+    syscall: 'read'
+  }
+}

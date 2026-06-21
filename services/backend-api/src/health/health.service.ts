@@ -21,6 +21,7 @@ import {
   getPublicApiBaseUrl,
   getDeploymentTier,
 } from "../common/platform-env";
+import { getContributionReserveConfig } from "../config/contribution-reserve.config";
 import { getStaleWithdrawalThresholdMs } from "../withdrawals/withdrawal-limits";
 
 @Injectable()
@@ -30,6 +31,7 @@ export class HealthService {
   async getHealth() {
     const tier = getDeploymentTier();
     const flags = getPlatformFeatureFlags();
+    const contributionReserve = getContributionReserveConfig();
     const checks: Record<string, "ok" | "error" | "skipped"> = {
       database: "ok",
       notifications: "ok",
@@ -130,6 +132,7 @@ export class HealthService {
         stagingRelaxTrust: flags.stagingRelaxTrust,
         debugOtpInResponses: flags.debugOtpInResponses,
         memberPhoneLogin: flags.memberPhoneLogin,
+        contributionReserveEnabled: contributionReserve.enabled,
       },
       warnings: this.collectWarnings(tier, flags, stagingSeed, checks.redis),
       infrastructure: {
@@ -210,6 +213,11 @@ export class HealthService {
     }
     if (flags.mockPayments) {
       warnings.push("Mock MoMo payment flows are enabled");
+    }
+    if (!hasWebhookSecret() && tier !== "production") {
+      warnings.push(
+        "WEBHOOK_SECRET unset — set WEBHOOK_SECRET and WEBHOOK_SECRET_MTN on Railway staging",
+      );
     }
     if (flags.stagingRelaxTrust) {
       warnings.push("Trust gates relaxed for staging");

@@ -11,6 +11,10 @@ import { IdempotencyService } from "../common/idempotency/idempotency.service";
 import { createPaymentProvider } from "../payments/providers/placeholder-providers";
 import { PaymentRequestsService } from "../payment-requests/payment-requests.service";
 import { WithdrawalsService } from "../withdrawals/withdrawals.service";
+import {
+  getWebhookAuthMode,
+  shouldRejectWebhook,
+} from "./webhook-auth";
 import { verifyWebhookSignature } from "./webhook-signature";
 
 export type InboundWebhook = {
@@ -37,6 +41,8 @@ export class WebhooksService {
       throw new NotImplementedException("Mock webhooks disabled in production");
     }
 
+    const tier = getDeploymentTier();
+    const authMode = getWebhookAuthMode(payload.provider);
     const rawBody = JSON.stringify(payload.body);
     const sig = verifyWebhookSignature({
       provider: payload.provider,
@@ -53,17 +59,30 @@ export class WebhooksService {
           "",
       );
 
-    if (getDeploymentTier() === "production" && !sig.valid) {
+    if (shouldRejectWebhook({ tier, authMode, signature: sig })) {
       this.logger.warn(
         JSON.stringify({
           domain: "webhook",
           event: "webhook.rejected",
           provider: payload.provider,
+          authMode,
           reason: sig.reason,
           correlationId,
         }),
       );
       throw new UnauthorizedException("Invalid webhook signature");
+    }
+
+    if (!sig.valid && authMode === "mtn_api_verify") {
+      this.logger.log(
+        JSON.stringify({
+          domain: "webhook",
+          event: "webhook.mtn_no_hmac",
+          provider: payload.provider,
+          note: "MTN callback accepted without x-signature; settlement requires API verify + known reference",
+          correlationId: correlationId || null,
+        }),
+      );
     }
 
     const idemKey =

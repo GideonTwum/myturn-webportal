@@ -25,6 +25,8 @@
     "seed:staging": "npm run seed:staging -w backend-api",
     "seed:staging:local": "npm run seed:staging:local -w backend-api",
     "seed:staging:railway": "npm run seed:staging:railway -w backend-api",
+    "repair:legacy-wallet:staging": "npm run repair:legacy-wallet:staging -w backend-api",
+    "repair:legacy-wallet:staging:execute": "npm run repair:legacy-wallet:staging:execute -w backend-api",
     "build:railway": "npm run build:shared && npm run build -w backend-api",
     "verify:railway": "node scripts/verify-railway-health.mjs",
     "test:otp": "npm run test:otp -w backend-api && node scripts/test-otp-staging.mjs",

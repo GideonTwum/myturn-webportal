@@ -1,8 +1,10 @@
 /**
- * Optional staging demo groups (STAGING-DEMO, STAGING-PAY).
- * Disabled by default — run `npm run seed:staging` only when you need mobile/join lab data.
+ * Idempotent staging demo seed — HQ/admin users + STAGING-DEMO / STAGING-PAY groups.
+ * Never wipes the database. Safe to rerun.
  */
+import { PrismaClient } from "@prisma/client";
 import { resolve } from "node:path";
+import { runStagingSeed } from "./seed-staging.lib";
 
 const {
   loadPrismaEnv,
@@ -12,24 +14,27 @@ const {
   logDatabaseUrlHost: (prefix?: string) => void;
 } = require("../load-env.cjs");
 
-export const STAGING_INVITE_DEMO = "STAGING-DEMO";
-export const STAGING_INVITE_PAY = "STAGING-PAY";
+export {
+  STAGING_INVITE_DEMO,
+  STAGING_INVITE_PAY,
+  STAGING_GROUP_SPECS,
+} from "./seed-staging.lib";
 
 const packageRoot = resolve(__dirname, "..");
 loadPrismaEnv(packageRoot);
+const prisma = new PrismaClient();
 
 async function main() {
-  console.log("[seed:staging] skipped — demo members/groups not seeded");
+  console.log("[seed:staging] MyTurn staging demo seed (idempotent)");
   logDatabaseUrlHost("[seed:staging]");
-  console.log(
-    "[seed:staging] HQ/admin only: npm run db:seed (hq@myturn.local, admin@myturn.local / ChangeMe123!)",
-  );
-  console.log(
-    "[seed:staging] To restore STAGING-DEMO / STAGING-PAY lab data, set SEED_STAGING_DEMO=1 and re-run seed:staging",
-  );
+  await runStagingSeed(prisma);
+  console.log("[seed:staging] done");
 }
 
-main().catch((e) => {
-  console.error("[seed:staging] failed:", e);
-  process.exit(1);
-});
+main()
+  .then(() => prisma.$disconnect())
+  .catch(async (e) => {
+    console.error("[seed:staging] failed:", e);
+    await prisma.$disconnect();
+    process.exit(1);
+  });

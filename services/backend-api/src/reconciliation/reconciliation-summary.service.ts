@@ -355,9 +355,10 @@ export class ReconciliationSummaryService {
       WHERE ABS(balance) > 0.01 OR ABS("lockedBalance") > 0.01
       LIMIT 10
     `.catch(() => []);
+    const legacyWalletWarnings: string[] = [];
     for (const row of staleLegacyWalletRows) {
-      discrepancies.push(
-        `Legacy Wallet row has non-zero balance for user ${row.userId} (balance=${row.balance}, locked=${row.lockedBalance}) — financial truth is LedgerAccount only`,
+      legacyWalletWarnings.push(
+        `Legacy Wallet row has non-zero balance for user ${row.userId} (balance=${row.balance}, locked=${row.lockedBalance}) — run repair:legacy-wallet:staging (dry-run first)`,
       );
     }
 
@@ -429,6 +430,7 @@ export class ReconciliationSummaryService {
         "0.00",
       marginModel: "myturn-100",
       discrepancies,
+      legacyWalletWarnings,
     };
   }
 }

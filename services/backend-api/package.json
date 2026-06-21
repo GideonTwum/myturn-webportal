@@ -27,6 +27,8 @@
     "seed:staging": "ts-node --project prisma/tsconfig.json prisma/seed-staging.ts",
     "seed:staging:local": "node scripts/seed-staging-local.cjs",
     "seed:staging:railway": "node scripts/seed-staging-railway.cjs",
+    "repair:legacy-wallet:staging": "ts-node --project prisma/tsconfig.json scripts/repair-legacy-wallet-staging.ts",
+    "repair:legacy-wallet:staging:execute": "ts-node --project prisma/tsconfig.json scripts/repair-legacy-wallet-staging.ts --execute",
     "db:wipe:local": "node scripts/wipe-local.cjs",
     "cleanup:keep-big-men-group": "node scripts/cleanup-keep-big-men-group.cjs",
     "db:wipe:staging:railway": "node scripts/wipe-staging-railway.cjs",

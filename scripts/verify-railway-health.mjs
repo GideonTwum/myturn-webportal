@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Post-deploy acceptance checks for Railway staging API.
+ * Post-deploy acceptance checks for Railway staging API (mock UAT mode).
  *
  * Usage:
  *   STAGING_API_URL=https://your-app.up.railway.app/api node scripts/verify-railway-health.mjs
@@ -15,6 +15,9 @@ const BASE = (
 ).replace(/\/+$/, "");
 
 const STRICT_ROLLOUT = process.env.STRICT_ROLLOUT === "1" || process.env.STRICT_ROLLOUT === "true";
+const EXPECTED_WEB_ORIGIN =
+  process.env.STAGING_WEB_ORIGIN?.replace(/\/+$/, "") ??
+  "https://myturn-webportal-web-portal.vercel.app";
 
 if (!BASE) {
   console.error("Set STAGING_API_URL (e.g. https://xxx.up.railway.app/api)");
@@ -39,8 +42,8 @@ function warn(name, detail) {
   console.log(`  ⚠ ${name}: ${detail}`);
 }
 
-async function fetchJson(path) {
-  const res = await fetch(`${BASE}${path}`);
+async function fetchJson(path, opts) {
+  const res = await fetch(`${BASE}${path}`, opts);
   const text = await res.text();
   let body;
   try {
@@ -76,8 +79,6 @@ function checkRedis(health) {
   const otpStore = redisBlock?.otpStore ?? infra.otpStore ?? "?";
   const idempotency = redisBlock?.idempotency ?? infra.idempotency ?? "?";
   const redisCheck = redisBlock?.check ?? health.checks?.redis ?? "?";
-  const configured = redisBlock?.configured ?? Boolean(process.env.REDIS_URL);
-  const rolloutReady = redisBlock?.rolloutReady ?? (redisCheck === "ok" && otpStore === "redis");
 
   console.log(`    OTP store: ${otpStore}`);
   console.log(`    Idempotency: ${idempotency}`);
@@ -85,7 +86,7 @@ function checkRedis(health) {
 
   if (redisCheck === "ok" && otpStore === "redis") {
     ok("Redis connected — OTP + idempotency on Redis");
-  } else   if (redisCheck === "error") {
+  } else if (redisCheck === "error") {
     fail("Redis", "REDIS_URL set but ping failed");
     const pingErr = health.infrastructure?.redis?.lastPingError;
     if (pingErr) warn("Redis ping detail", pingErr);
@@ -101,58 +102,161 @@ function checkRedis(health) {
   } else {
     fail("Redis", `unexpected state: check=${redisCheck}, otpStore=${otpStore}`);
   }
-
-  if (configured && redisCheck !== "ok") {
-    warn("Redis config", "REDIS_URL appears configured but health check did not pass");
-  }
-
-  return { otpStore, rolloutReady };
 }
 
 function checkOtpMode(health) {
-  console.log("\n  — OTP mode —");
+  console.log("\n  — OTP / SMS —");
   const flags = health.featureFlags ?? {};
-  const sms = health.infrastructure?.sms?.provider ?? health.infrastructure?.smsProvider ?? "?";
-  const debugOtp = flags.debugOtpInResponses === true;
+  const sms = health.infrastructure?.sms ?? {};
+  const smsProvider = sms.provider ?? "?";
+  const smsHealth = sms.health ?? "?";
 
-  if (debugOtp) ok("Debug OTP in API responses (staging console SMS)");
-  else warn("OTP debug", "debugOtpInResponses=false — testers may not see on-screen codes");
+  if (flags.debugOtpInResponses === true) {
+    ok("Debug OTP in API responses (optional staging aid)");
+  } else {
+    ok("OTP via real SMS (debugOtpInResponses=false — Arkesel expected)");
+  }
 
-  if (sms === "console") ok(`SMS provider: ${sms} (codes logged, not sent via SMS)`);
-  else fail("SMS provider", `expected console for staging, got ${sms}`);
-
-  const metrics = health.infrastructure?.otpMetrics;
-  if (metrics && typeof metrics === "object") {
-    console.log(
-      `    OTP telemetry: requests=${metrics.requests ?? 0}, verifies=${metrics.verifies ?? 0}`,
-    );
+  if (smsProvider === "arkesel" && smsHealth === "ok") {
+    ok(`SMS provider: arkesel (real OTP delivery)`);
+  } else if (smsProvider === "console") {
+    warn("SMS provider", "console — use arkesel for staging UAT with real phones");
+  } else {
+    fail("SMS provider", `expected arkesel ok for staging UAT, got ${smsProvider}/${smsHealth}`);
   }
 }
 
 function checkPayments(health) {
-  console.log("\n  — Payments —");
+  console.log("\n  — Payments (mock UAT) —");
   const pay =
     health.infrastructure?.payment?.provider ??
     health.infrastructure?.paymentProvider ??
     "?";
+  const disb =
+    health.infrastructure?.disbursement?.provider ??
+    health.infrastructure?.disbursementProvider ??
+    "?";
   const payHealth = health.infrastructure?.payment?.health ?? "?";
 
   if (pay === "mock" || pay === "mock-momo") {
-    ok(`Payment provider: ${pay} (simulated MoMo — no real money)`);
+    ok(`Payment provider: ${pay} (simulated MoMo — no MTN yet)`);
+  } else if (String(pay).includes("mtn")) {
+    fail(
+      "payment provider",
+      `${pay} — set PAYMENT_PROVIDER=mock for mock UAT (remove MTN_* from active config)`,
+    );
   } else {
     fail("payment provider", `expected mock or mock-momo, got ${pay}`);
+  }
+
+  if (disb === "mock" || disb === "mock-disbursement") {
+    ok(`Disbursement provider: ${disb}`);
+  } else if (String(disb).includes("mtn")) {
+    fail("disbursement provider", `${disb} — set DISBURSEMENT_PROVIDER=mock for mock UAT`);
+  } else {
+    fail("disbursement provider", `expected mock-disbursement, got ${disb}`);
   }
 
   console.log(`    Payment health: ${payHealth}`);
 
   if (health.featureFlags?.mockPayments === true) ok("MOCK_PAYMENTS enabled");
-  else fail("MOCK_PAYMENTS", "expected true in staging");
+  else fail("MOCK_PAYMENTS", "expected true in staging mock UAT");
+
+  if (health.featureFlags?.mockPayoutFinalize === true) ok("MOCK_PAYOUTS enabled");
+  else fail("MOCK_PAYOUTS", "expected true in staging mock UAT");
+}
+
+function checkFeatureFlags(health) {
+  console.log("\n  — Feature flags —");
+  if (health.featureFlags?.contributionReserveEnabled === true) {
+    ok("CONTRIBUTION_RESERVE_ENABLED=true");
+  } else {
+    fail("CONTRIBUTION_RESERVE_ENABLED", "expected true on staging");
+  }
+
+  const webhooks = health.infrastructure?.webhooks ?? {};
+  if (webhooks.secretConfigured === true) {
+    ok("Webhook secrets configured");
+  } else {
+    fail("WEBHOOK_SECRET", "set WEBHOOK_SECRET (+ WEBHOOK_SECRET_MTN placeholder) on Railway");
+  }
+}
+
+async function checkReconciliation(health) {
+  console.log("\n  — Reconciliation —");
+  const rec = health.infrastructure?.reconciliation ?? {};
+  if (rec.enabled === false) {
+    ok("Reconciliation job disabled (expected initially)");
+  } else {
+    warn("Reconciliation job", "ENABLE_RECONCILIATION_JOB=true — OK after mock UAT stabilizes");
+  }
+
+  try {
+    const login = await fetchJson("/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email: "hq@myturn.local",
+        password: "ChangeMe123!",
+      }),
+    });
+    const token = login.access_token ?? login.accessToken;
+    if (!token) {
+      warn("Reconciliation summary", "HQ login failed — skip legacy wallet check");
+      return;
+    }
+    const summary = await fetchJson("/hq/reconciliation/summary", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (summary.status === "ok") {
+      ok("HQ reconciliation summary: ok");
+    } else if (summary.status === "discrepancies_detected") {
+      const legacy = summary.legacyWalletWarnings ?? [];
+      const critical = (summary.discrepancies ?? []).length;
+      if (critical === 0 && legacy.length > 0) {
+        warn(
+          "Legacy wallet rows",
+          `${legacy.length} warning(s) — run repair:legacy-wallet:staging --execute`,
+        );
+        ok("No critical reconciliation discrepancies");
+      } else {
+        fail(
+          "Reconciliation",
+          `${critical} critical discrepancy(ies): ${(summary.discrepancies ?? []).slice(0, 2).join("; ")}`,
+        );
+      }
+    } else {
+      warn("Reconciliation summary", `status=${summary.status}`);
+    }
+  } catch (e) {
+    warn("Reconciliation summary", e instanceof Error ? e.message : String(e));
+  }
+}
+
+async function checkCors() {
+  console.log("\n  — CORS —");
+  try {
+    const res = await fetch(`${BASE}/health`, {
+      headers: { Origin: EXPECTED_WEB_ORIGIN },
+    });
+    const allowOrigin = res.headers.get("access-control-allow-origin");
+    if (allowOrigin && (allowOrigin === EXPECTED_WEB_ORIGIN || allowOrigin === "*")) {
+      ok(`CORS allows web origin (${allowOrigin})`);
+    } else {
+      fail(
+        "CORS",
+        `Origin ${EXPECTED_WEB_ORIGIN} not reflected — set CORS_ORIGIN on Railway (got ${allowOrigin ?? "none"})`,
+      );
+    }
+  } catch (e) {
+    fail("CORS", e instanceof Error ? e.message : String(e));
+  }
 }
 
 function checkInviteGroups() {
   console.log("\n  — Staging invite groups —");
   console.log("    STAGING-DEMO = joinable onboarding test");
-  console.log("    STAGING-PAY  = active/full payment lab (seeded accounts only)");
+  console.log("    STAGING-PAY  = mock payment lab (join → activate → contribute)");
 }
 
 async function main() {
@@ -199,6 +303,7 @@ async function main() {
   checkRedis(health);
   checkOtpMode(health);
   checkPayments(health);
+  checkFeatureFlags(health);
 
   if (health.featureFlags?.stagingRelaxTrust === true) {
     ok("STAGING_RELAX_TRUST enabled");
@@ -211,7 +316,7 @@ async function main() {
   } else {
     fail(
       "staging seed",
-      health.stagingSeed?.missing?.join(", ") ?? "missing — run seed:staging:railway",
+      health.stagingSeed?.missing?.join(", ") ?? "missing — run npm run db:seed && npm run seed:staging:railway",
     );
   }
 
@@ -221,6 +326,8 @@ async function main() {
   }
 
   checkInviteGroups();
+  await checkCors();
+  await checkReconciliation(health);
 
   const demo = await fetchInvitePreview("STAGING-DEMO");
   if (demo.ok && demo.body?.inviteCode) {
@@ -256,7 +363,7 @@ async function main() {
   if (warnings.length > 0) {
     console.log(`--- ${warnings.length} warning(s) — review before tester rollout ---`);
   }
-  console.log("\nNext: docs/TESTER_ROLLOUT_CHECKLIST.md · docs/REAL_DEVICE_SMOKE_TEST.md\n");
+  console.log("\nNext: docs/STAGING_MOCK_UAT.md · docs/TESTER_ROLLOUT_CHECKLIST.md\n");
   process.exit(failed.length > 0 ? 1 : 0);
 }
 

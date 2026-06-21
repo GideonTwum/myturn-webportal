@@ -43,12 +43,19 @@ Set on the **API service** (not Postgres):
 | `JWT_SECRET` | long random string | Required |
 | `CORS_ORIGIN` | `https://YOUR_VERCEL_APP.vercel.app` | Comma-separated if multiple |
 | `PUBLIC_API_URL` | `https://YOUR_RAILWAY_DOMAIN/api` | Shown in health + errors |
-| `SMS_PROVIDER` | `console` | OTP logged until Arkesel keys exist |
+| `SMS_PROVIDER` | `arkesel` | Real OTP for staging UAT (not console) |
+| `ARKESEL_API_KEY` | *(Railway secret)* | Required when `SMS_PROVIDER=arkesel` |
+| `ARKESEL_SENDER_ID` | approved sender | Required when `SMS_PROVIDER=arkesel` |
+| `OTP_DEBUG_IN_RESPONSES` | `false` | Real SMS — no on-screen debug codes |
 | `PAYMENT_PROVIDER` | `mock` | Mock MoMo until MTN sandbox ready |
+| `DISBURSEMENT_PROVIDER` | `mock` | Mock withdrawals until MTN disbursement ready |
 | `MOCK_PAYMENTS` | `true` | Explicit staging mock payments |
 | `MOCK_PAYOUTS` | `true` | Mock payout finalize |
+| `CONTRIBUTION_RESERVE_ENABLED` | `true` | Reserve/default UAT on staging |
 | `STAGING_RELAX_TRUST` | `true` | Relaxed Ghana Card gates |
-| `ENABLE_RECONCILIATION_JOB` | `false` | Optional cron off for staging |
+| `ENABLE_RECONCILIATION_JOB` | `false` | Enable after mock UAT stabilizes |
+| `WEBHOOK_SECRET` | strong random | Required even in staging |
+| `WEBHOOK_SECRET_MTN` | strong random | Placeholder before MTN phase |
 
 **Optional — local dev CORS while testing Vercel + localhost:**
 
@@ -56,33 +63,28 @@ Set on the **API service** (not Postgres):
 |----------|---------|
 | `STAGING_CORS_EXTRA` | `http://localhost:3000,http://127.0.0.1:3000` |
 
-**Optional — Redis plugin attached:**
+**Optional — Redis plugin (recommended for staging UAT):**
 
 | Variable | Value |
 |----------|--------|
 | `REDIS_URL` | `${{ Redis.REDIS_URL }}` |
 
-**Later — real providers (only when credentials exist):**
+**Remove from Railway during mock UAT** (MTN enabled too early breaks mock flow):
+
+- `PAYMENT_PROVIDER=mtn-momo` → set to `mock`
+- All active `MTN_MOMO_*` and `MTN_MOMO_DISBURSEMENT_*` variables (comment out or delete)
+
+**Later — MTN MoMo sandbox** (only after mock UAT passes — see [MTN_WEBHOOK_SECURITY.md](./MTN_WEBHOOK_SECURITY.md)):
 
 ```env
-SMS_PROVIDER=arkesel
-ARKESEL_API_KEY=...
-ARKESEL_SENDER_ID=...
-
 PAYMENT_PROVIDER=mtn-momo
+DISBURSEMENT_PROVIDER=mtn-momo
 MTN_MOMO_API_KEY=...
 MTN_MOMO_API_USER=...
 MTN_MOMO_SUBSCRIPTION_KEY=...
 MTN_MOMO_ENVIRONMENT=sandbox
 MTN_MOMO_CALLBACK_HOST=https://YOUR_RAILWAY_DOMAIN
-
-DISBURSEMENT_PROVIDER=mtn-momo
-MTN_MOMO_DISBURSEMENT_SUBSCRIPTION_KEY=...
-MTN_MOMO_DISBURSEMENT_API_USER=...
-MTN_MOMO_DISBURSEMENT_API_KEY=...
-MTN_MOMO_DISBURSEMENT_CALLBACK_HOST=https://YOUR_RAILWAY_DOMAIN
-
-WEBHOOK_SECRET=...
+MOCK_PAYMENTS=false
 ENABLE_RECONCILIATION_JOB=true
 ```
 
@@ -97,7 +99,8 @@ Health exposes provider status at `GET /api/health` → `infrastructure.payment.
 
 See **[REAL_MONEY_PILOT_CHECKLIST.md](./REAL_MONEY_PILOT_CHECKLIST.md)** before any real-money pilot.
 
-**Never** set `MOCK_PAYMENTS=true` or `SMS_PROVIDER=console` when `DEPLOYMENT_TIER=production` — startup will crash.
+**Never** set `MOCK_PAYMENTS=true` when `DEPLOYMENT_TIER=production` — startup will crash.  
+**Never** set `PAYMENT_PROVIDER=mtn-momo` during mock UAT — mobile mock-approve UX is hidden.
 
 ---
 
@@ -144,12 +147,12 @@ This runs `prisma migrate deploy` only — no data wipe.
 
 ## 5. Seeding strategy
 
-Seeds are **idempotent** (upsert) — safe to run multiple times. They **never wipe** the database.
+Seeds are **idempotent** — safe to run multiple times. They **never wipe** the database.
 
 **Order:**
 
 ```bash
-# 1. Base users (HQ, admin, members)
+# 1. Base users (HQ, admin)
 npm run db:seed
 
 # 2. Staging demo groups + invites
@@ -164,9 +167,17 @@ npm run seed:staging:railway
 |------|--------|
 | HQ | `hq@myturn.local` / `ChangeMe123!` |
 | Admin | `admin@myturn.local` / `ChangeMe123!` |
-| Members | `0240000001`, `0240000002`, etc. |
-| `STAGING-DEMO` | DRAFT group, join flow |
-| `STAGING-PAY` | ACTIVE group, pending contributions for MoMo mock |
+| `STAGING-DEMO` | DRAFT CYCLE group, join onboarding |
+| `STAGING-PAY` | DRAFT CYCLE group, mock payment lab |
+
+**Legacy wallet repair** (if HQ reconciliation warns):
+
+```bash
+npm run repair:legacy-wallet:staging -w backend-api          # dry-run
+npm run repair:legacy-wallet:staging:execute -w backend-api  # apply on staging DB
+```
+
+Requires `DEPLOYMENT_TIER=staging` in env or `MYTURN_STAGING_REPAIR=1`.
 
 Verify locally against Railway DB:
 
@@ -215,13 +226,14 @@ Expected (staging):
   "checks": { "database": "ok", "redis": "skipped" },
   "featureFlags": {
     "mockPayments": true,
-    "stagingRelaxTrust": true
+    "stagingRelaxTrust": true,
+    "contributionReserveEnabled": true
   },
   "stagingSeed": { "status": "ok", "inviteCodes": ["STAGING-DEMO", "STAGING-PAY"] },
   "infrastructure": {
-    "sms": { "provider": "console", "health": "ok" },
-    "payment": { "provider": "mock", "health": "ok" },
-    "otpStore": "memory"
+    "sms": { "provider": "arkesel", "health": "ok" },
+    "payment": { "provider": "mock-momo", "health": "ok" },
+    "otpStore": "redis"
   }
 }
 ```
@@ -270,9 +282,10 @@ After each deploy:
 - [ ] `GET /api/groups/invite/STAGING-DEMO` works  
 - [ ] `GET /api/groups/invite/STAGING-PAY` works  
 - [ ] Vercel admin login → groups load  
-- [ ] Mobile OTP with `0240000001` (debug code in response if `console` SMS)  
-- [ ] Mock MoMo payment on `STAGING-PAY`  
+- [ ] Mobile OTP via Arkesel SMS on a real phone  
+- [ ] Mock MoMo payment on `STAGING-PAY` (mock-approve button visible)  
 - [ ] `npm run verify:railway` passes  
+- [ ] See [STAGING_MOCK_UAT.md](./STAGING_MOCK_UAT.md) for full smoke test
 
 ---
 
@@ -287,7 +300,9 @@ After each deploy:
 | **DB connection failed** | Private URL on laptop or wrong reference | Runtime: private; laptop: public in `.env.railway-public` |
 | **`postgres.railway.internal` from laptop** | Using private URL locally | Use public URL in `.env.railway-public` |
 | **Invalid invite code** | Seed not run on this DB | `npm run db:seed && npm run seed:staging:railway` |
-| **OTP works but no SMS** | `SMS_PROVIDER=console` | Expected until Arkesel configured |
+| **OTP works but no SMS** | `SMS_PROVIDER=console` or missing Arkesel keys | Set `SMS_PROVIDER=arkesel` + keys |
+| **Mock pay button hidden** | `PAYMENT_PROVIDER=mtn-momo` | Set `PAYMENT_PROVIDER=mock` for mock UAT |
+| **Legacy wallet discrepancy** | Stale `Wallet.lockedBalance` | `repair:legacy-wallet:staging:execute` |
 | **Production safety crash** | `MOCK_PAYMENTS=true` with `DEPLOYMENT_TIER=production` | Use `staging` tier on Railway staging |
 | **Health `stagingSeed: missing`** | Seed not applied | Run seed commands against Railway DB |
 
@@ -325,6 +340,7 @@ npm run db:migrate:deploy
 # Seed Railway DB from laptop
 npm run db:seed
 npm run seed:staging:railway
+npm run repair:legacy-wallet:staging -w backend-api
 
 # Verify deployed API
 STAGING_API_URL=https://xxx.up.railway.app/api npm run verify:railway
