@@ -61,6 +61,7 @@ export class GroupMembersService {
           groupId: params.groupId,
           userId: params.userId,
           turnOrder: params.turnOrder,
+          effectivePayoutOrder: params.turnOrder,
           depositAmount: 0,
           depositStatus: DepositStatus.NOT_REQUIRED,
         },

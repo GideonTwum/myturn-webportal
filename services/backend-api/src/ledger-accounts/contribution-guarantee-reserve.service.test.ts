@@ -11,6 +11,7 @@ describe("ContributionGuaranteeReserveService", () => {
     getOrCreateMemberWallet: vi.fn(),
     getOrCreateMemberWalletAvailable: vi.fn(),
     getOrCreateMemberWalletReserved: vi.fn(),
+    getBalance: vi.fn(),
   };
   const posting = { postTransferInTx: vi.fn() };
   const notifications = { create: vi.fn() };
@@ -256,6 +257,11 @@ describe("ContributionGuaranteeReserveService", () => {
       };
     }
 
+    beforeEach(() => {
+      prisma.contributionGuaranteeReserve.count = vi.fn().mockResolvedValue(0);
+      accounts.getBalance = vi.fn().mockResolvedValue(new Prisma.Decimal(0));
+    });
+
     it("does nothing when group is not COMPLETED", async () => {
       prisma.group.findUnique.mockResolvedValue({
         status: GroupStatus.ACTIVE,
@@ -324,7 +330,7 @@ describe("ContributionGuaranteeReserveService", () => {
       expect(updateArg.data.releasedAmount.toString()).toBe("3000");
     });
 
-    it("marks reserve RELEASED and only queries ACTIVE rows with balance", async () => {
+    it("queries all ACTIVE reserves including zero remaining", async () => {
       prisma.group.findUnique.mockResolvedValue({
         status: GroupStatus.COMPLETED,
         name: "Done Group",
@@ -339,9 +345,81 @@ describe("ContributionGuaranteeReserveService", () => {
         where: {
           groupId: "g1",
           status: ContributionGuaranteeReserveStatus.ACTIVE,
-          remainingReserveAmount: { gt: 0 },
         },
       });
+    });
+
+    it("marks ACTIVE reserve with remaining 0 as RELEASED at completion", async () => {
+      const zeroRemainingReserve = {
+        ...activeReserve,
+        remainingReserveAmount: new Prisma.Decimal(0),
+      };
+      prisma.group.findUnique.mockResolvedValue({
+        status: GroupStatus.COMPLETED,
+        name: "Done Group",
+      });
+      prisma.contributionGuaranteeReserve.findMany.mockResolvedValue([
+        zeroRemainingReserve,
+      ]);
+      prisma.contributionGuaranteeReserve.count.mockResolvedValue(0);
+      accounts.getBalance.mockResolvedValue(new Prisma.Decimal(0));
+
+      await svc.releaseAllActiveReservesOnGroupCompletedInTx(tx() as never, {
+        groupId: "g1",
+      });
+
+      expect(posting.postTransferInTx).not.toHaveBeenCalled();
+      expect(prisma.contributionGuaranteeReserve.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: "r-final" },
+          data: expect.objectContaining({
+            status: ContributionGuaranteeReserveStatus.RELEASED,
+            remainingReserveAmount: expect.any(Prisma.Decimal),
+          }),
+        }),
+      );
+    });
+
+    it("sweeps orphaned reserved ledger balance when no ACTIVE reserves remain", async () => {
+      prisma.group.findUnique.mockResolvedValue({
+        status: GroupStatus.COMPLETED,
+        name: "Done Group",
+      });
+      prisma.contributionGuaranteeReserve.findMany.mockResolvedValue([
+        {
+          ...activeReserve,
+          remainingReserveAmount: new Prisma.Decimal(0),
+        },
+      ]);
+      prisma.contributionGuaranteeReserve.count.mockResolvedValue(0);
+      accounts.getBalance.mockResolvedValue(new Prisma.Decimal("840"));
+      accounts.getOrCreateMemberWalletReserved.mockResolvedValue({
+        id: "reserved-acct",
+      });
+      accounts.getOrCreateMemberWalletAvailable.mockResolvedValue({
+        id: "available-acct",
+      });
+      posting.postTransferInTx.mockResolvedValue({ duplicate: false });
+
+      await svc.releaseAllActiveReservesOnGroupCompletedInTx(tx() as never, {
+        groupId: "g1",
+      });
+
+      expect(posting.postTransferInTx).toHaveBeenCalledWith(
+        tx(),
+        expect.objectContaining({
+          idempotencyKey: "reserve:orphan-sweep:u1",
+          fromAccountId: "reserved-acct",
+          toAccountId: "available-acct",
+          amount: expect.objectContaining({
+            toString: expect.any(Function),
+          }),
+        }),
+      );
+      const sweepArg = posting.postTransferInTx.mock.calls.find(
+        (c) => c[1]?.idempotencyKey === "reserve:orphan-sweep:u1",
+      );
+      expect(sweepArg?.[1].amount.toString()).toBe("840");
     });
 
     it("is idempotent when finalize is retried", async () => {

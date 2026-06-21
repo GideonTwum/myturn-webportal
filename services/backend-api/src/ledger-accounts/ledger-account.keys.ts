@@ -40,6 +40,13 @@ export function memberWalletReservedKey(
   return `MEMBER_WALLET_RESERVED:${userId}:${currency}`;
 }
 
+export function memberDepositEscrowKey(
+  userId: string,
+  currency = DEFAULT_CURRENCY,
+): string {
+  return `MEMBER_DEPOSIT_ESCROW:${userId}:${currency}`;
+}
+
 export function adminEarningsKey(userId: string, currency = DEFAULT_CURRENCY): string {
   return `ADMIN_EARNINGS:${userId}:${currency}`;
 }
@@ -55,6 +62,9 @@ export function accountTypeForKey(key: string): LedgerAccountType | null {
   }
   if (key.startsWith("MEMBER_WALLET_RESERVED:")) {
     return LedgerAccountType.MEMBER_WALLET_RESERVED;
+  }
+  if (key.startsWith("MEMBER_DEPOSIT_ESCROW:")) {
+    return LedgerAccountType.MEMBER_DEPOSIT_ESCROW;
   }
   if (key.startsWith("MEMBER_WALLET:")) return LedgerAccountType.MEMBER_WALLET;
   if (key.startsWith("ADMIN_EARNINGS:")) return LedgerAccountType.ADMIN_EARNINGS;

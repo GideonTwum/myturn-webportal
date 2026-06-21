@@ -13,7 +13,6 @@ import {
 } from "@prisma/client";
 import { summarizeCycle } from "@myturn/shared";
 import { PrismaService } from "../prisma/prisma.service";
-import { WalletsService } from "../wallets/wallets.service";
 import { ContributionGuaranteeReserveService } from "./contribution-guarantee-reserve.service";
 import { LedgerAccountService } from "./ledger-account.service";
 import { LedgerPostingService } from "./ledger-posting.service";
@@ -47,7 +46,6 @@ export class FinancialAllocationService {
     private prisma: PrismaService,
     private accounts: LedgerAccountService,
     private posting: LedgerPostingService,
-    private wallets: WalletsService,
     private reserve: ContributionGuaranteeReserveService,
   ) {}
 
@@ -162,7 +160,6 @@ export class FinancialAllocationService {
 
     if (result.reserveRelease?.released) {
       await this.reserve.notifyReserveReleased(result.reserveRelease);
-      await this.syncLegacyMemberWallet(contribution.userId);
     }
 
     return result;
@@ -264,8 +261,6 @@ export class FinancialAllocationService {
       split,
     });
 
-    await this.syncLegacyMemberWallet(params.recipientUserId, tx);
-
     return {
       summary,
       gross,
@@ -279,40 +274,16 @@ export class FinancialAllocationService {
     };
   }
 
-  async syncLegacyMemberWallet(userId: string, tx?: Prisma.TransactionClient) {
-    const db = tx ?? this.prisma;
-    if (tx) {
-      await this.reserve.ensureLegacyWalletMigratedInTx(tx, userId);
-    } else {
-      await this.prisma.$transaction((inner) =>
-        this.reserve.ensureLegacyWalletMigratedInTx(inner, userId),
-      );
-    }
-
-    const [available, reserved] = await Promise.all([
-      this.accounts.getOrCreateMemberWalletAvailable(userId, tx),
-      this.accounts.getOrCreateMemberWalletReserved(userId, tx),
-    ]);
-    const total = new Prisma.Decimal(available.balance.toString()).add(
-      reserved.balance,
-    );
-    await this.wallets.getOrCreate(userId);
-    await db.wallet.update({
-      where: { userId },
-      data: { balance: total, currency: available.currency },
-    });
-  }
-
   async getMemberWalletSummary(userId: string) {
     await this.prisma.$transaction((tx) =>
       this.reserve.ensureLegacyWalletMigratedInTx(tx, userId),
     );
 
-    const [availableAcct, reservedAcct] = await Promise.all([
+    const [availableAcct, reservedAcct, depositEscrowAcct] = await Promise.all([
       this.accounts.getOrCreateMemberWalletAvailable(userId),
       this.accounts.getOrCreateMemberWalletReserved(userId),
+      this.accounts.getOrCreateMemberDepositEscrow(userId),
     ]);
-    await this.syncLegacyMemberWallet(userId);
 
     const pending = await this.prisma.withdrawalRequest.aggregate({
       where: {
@@ -340,7 +311,8 @@ export class FinancialAllocationService {
 
     const availableBal = new Prisma.Decimal(availableAcct.balance.toString());
     const reservedBal = new Prisma.Decimal(reservedAcct.balance.toString());
-    const totalBal = availableBal.add(reservedBal);
+    const depositEscrowBal = new Prisma.Decimal(depositEscrowAcct.balance.toString());
+    const totalBal = availableBal.add(reservedBal).add(depositEscrowBal);
     const pendingSum = pending._sum.amount ?? new Prisma.Decimal(0);
     const withdrawable = Prisma.Decimal.max(
       availableBal.sub(pendingSum),
@@ -378,6 +350,7 @@ export class FinancialAllocationService {
       balance: totalBal.toFixed(2),
       availableBalance: withdrawable.toFixed(2),
       reservedBalance: reservedBal.toFixed(2),
+      depositEscrowBalance: depositEscrowBal.toFixed(2),
       totalBalance: totalBal.toFixed(2),
       pendingWithdrawals: pendingSum.toFixed(2),
       nextReserveUnlockAmount,

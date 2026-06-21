@@ -9,6 +9,7 @@ export * from "./notifications";
 export * from "./verification";
 export * from "./admin";
 export * from "./wallet";
+export * from "./hq-ledger";
 
 import { createApiClient, type ApiClientConfig } from "./client";
 import { createAuthApi } from "./auth";
@@ -19,6 +20,7 @@ import { createNotificationsApi } from "./notifications";
 import { createVerificationApi } from "./verification";
 import { createAdminApi } from "./admin";
 import { createWalletApi } from "./wallet";
+import { createHqLedgerApi } from "./hq-ledger";
 
 export function createMyturnApi(config: ApiClientConfig) {
   const client = createApiClient(config);
@@ -32,6 +34,7 @@ export function createMyturnApi(config: ApiClientConfig) {
     verification: createVerificationApi(client),
     admin: createAdminApi(client),
     wallet: createWalletApi(client),
+    hqLedger: createHqLedgerApi(client),
   };
 }
 

@@ -5,6 +5,7 @@ import {
   FileText,
   LayoutDashboard,
   PieChart,
+  ScrollText,
   Settings,
   UserCog,
   Users,
@@ -99,6 +100,12 @@ export const hqNavItems: NavItem[] = [
     section: "MyTurn HQ",
   },
   {
+    href: "/hq/ledger",
+    label: "Ledger Explorer",
+    icon: ScrollText,
+    section: "MyTurn HQ",
+  },
+  {
     href: "/hq/withdrawals",
     label: "Withdrawals",
     icon: ArrowLeftRight,
@@ -136,6 +143,7 @@ const HQ_TITLES: Record<string, string> = {
   "/hq/groups": "Groups",
   "/hq/transactions": "Payments (mock)",
   "/hq/wallets": "Platform wallets",
+  "/hq/ledger": "Ledger Explorer",
   "/hq/withdrawals": "Withdrawals",
   "/hq/reconciliation": "Reconciliation",
   "/hq/settings": "Platform settings",

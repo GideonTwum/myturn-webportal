@@ -35,7 +35,7 @@ export class ReconciliationSummaryService {
     const myturnRevenue = await this.accounts.getOrCreateMyturnRevenue();
     const clearing = await this.accounts.getOrCreateWithdrawalClearing();
 
-    const [memberAvailable, memberReserved, legacyMemberWallets] =
+    const [memberAvailable, memberReserved, memberDepositEscrow, legacyMemberWallets] =
       await Promise.all([
         this.prisma.ledgerAccount.aggregate({
           where: { accountType: LedgerAccountType.MEMBER_WALLET_AVAILABLE },
@@ -43,6 +43,10 @@ export class ReconciliationSummaryService {
         }),
         this.prisma.ledgerAccount.aggregate({
           where: { accountType: LedgerAccountType.MEMBER_WALLET_RESERVED },
+          _sum: { balance: true },
+        }),
+        this.prisma.ledgerAccount.aggregate({
+          where: { accountType: LedgerAccountType.MEMBER_DEPOSIT_ESCROW },
           _sum: { balance: true },
         }),
         this.prisma.ledgerAccount.aggregate({
@@ -187,10 +191,13 @@ export class ReconciliationSummaryService {
       memberAvailable._sum.balance ?? new Prisma.Decimal(0);
     const memberReservedLiabilities =
       memberReserved._sum.balance ?? new Prisma.Decimal(0);
+    const memberDepositEscrowLiabilities =
+      memberDepositEscrow._sum.balance ?? new Prisma.Decimal(0);
     const legacyMemberLiabilities =
       legacyMemberWallets._sum.balance ?? new Prisma.Decimal(0);
     const memberLiabilities = memberAvailableLiabilities
       .add(memberReservedLiabilities)
+      .add(memberDepositEscrowLiabilities)
       .add(legacyMemberLiabilities);
     const adminLiabilities = adminWallets._sum.balance ?? new Prisma.Decimal(0);
     const revenueBalance = new Prisma.Decimal(myturnRevenue.balance.toString());
@@ -200,6 +207,7 @@ export class ReconciliationSummaryService {
     // Float ≈ Group Pools + Member Available + Member Reserved + MyTurn Revenue + Clearing
     const totalWalletLiabilities = memberAvailableLiabilities
       .add(memberReservedLiabilities)
+      .add(memberDepositEscrowLiabilities)
       .add(legacyMemberLiabilities)
       .add(revenueBalance)
       .add(groupPoolBalance)
@@ -339,18 +347,17 @@ export class ReconciliationSummaryService {
       }
     }
 
-    const legacyWalletMismatch = await this.prisma.$queryRaw<
-      Array<{ userId: string; walletBalance: string; ledgerBalance: string }>
+    const staleLegacyWalletRows = await this.prisma.$queryRaw<
+      Array<{ userId: string; balance: string; lockedBalance: string }>
     >`
-      SELECT w."userId", w.balance::text AS "walletBalance", la.balance::text AS "ledgerBalance"
-      FROM "Wallet" w
-      INNER JOIN "LedgerAccount" la ON la."accountKey" = 'MEMBER_WALLET:' || w."userId" || ':GHS'
-      WHERE ABS(w.balance - la.balance) > 0.01
+      SELECT "userId", balance::text, "lockedBalance"::text AS "lockedBalance"
+      FROM "Wallet"
+      WHERE ABS(balance) > 0.01 OR ABS("lockedBalance") > 0.01
       LIMIT 10
     `.catch(() => []);
-    for (const row of legacyWalletMismatch) {
+    for (const row of staleLegacyWalletRows) {
       discrepancies.push(
-        `Legacy Wallet vs MEMBER_WALLET mismatch for user ${row.userId} (wallet=${row.walletBalance}, ledger=${row.ledgerBalance})`,
+        `Legacy Wallet row has non-zero balance for user ${row.userId} (balance=${row.balance}, locked=${row.lockedBalance}) — financial truth is LedgerAccount only`,
       );
     }
 
@@ -378,6 +385,7 @@ export class ReconciliationSummaryService {
       memberWalletLiabilities: memberLiabilities.toFixed(2),
       memberWalletAvailable: memberAvailableLiabilities.toFixed(2),
       memberWalletReserved: memberReservedLiabilities.toFixed(2),
+      memberDepositEscrow: memberDepositEscrowLiabilities.toFixed(2),
       /** @deprecated Use legacyAdminEarningsLiabilities — not part of active liability formula. */
       adminEarningsLiabilities: adminLiabilities.toFixed(2),
       myturnRevenueBalance: revenueBalance.toFixed(2),

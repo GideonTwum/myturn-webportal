@@ -1,7 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import {
   DepositStatus,
-  LedgerEntryType,
   MemberCycleStanding,
   PaymentStatus,
   PaymentType,
@@ -9,9 +8,9 @@ import {
   Prisma,
 } from "@prisma/client";
 import { Decimal } from "@prisma/client/runtime/library";
-import { LedgerService } from "../ledger/ledger.service";
+import { LedgerAccountService } from "../ledger-accounts/ledger-account.service";
+import { LedgerPostingService } from "../ledger-accounts/ledger-posting.service";
 import { PrismaService } from "../prisma/prisma.service";
-import { WalletsService } from "../wallets/wallets.service";
 
 export type JoinDepositResult = {
   depositAmount: Prisma.Decimal;
@@ -22,8 +21,8 @@ export type JoinDepositResult = {
 export class CycleDepositsService {
   constructor(
     private prisma: PrismaService,
-    private wallets: WalletsService,
-    private ledger: LedgerService,
+    private accounts: LedgerAccountService,
+    private posting: LedgerPostingService,
   ) {}
 
   depositRequiredAmount(group: {
@@ -40,7 +39,50 @@ export class CycleDepositsService {
   }
 
   /**
-   * CYCLE: lock contribution×days in wallet.lockedBalance and record a mock DEPOSIT payment.
+   * One-time migration: legacy Wallet.lockedBalance → MEMBER_DEPOSIT_ESCROW ledger account.
+   */
+  async ensureLegacyDepositEscrowMigratedInTx(
+    tx: Prisma.TransactionClient,
+    userId: string,
+  ) {
+    const wallet = await tx.wallet.findUnique({ where: { userId } });
+    if (!wallet) return;
+
+    const locked = new Prisma.Decimal(wallet.lockedBalance.toString());
+    if (locked.lte(0)) return;
+
+    const escrow = await this.accounts.getOrCreateMemberDepositEscrow(userId, tx);
+    const escrowBal = new Prisma.Decimal(escrow.balance.toString());
+    const gap = locked.sub(escrowBal);
+    if (gap.lte(0)) {
+      if (!wallet.lockedBalance.isZero()) {
+        await tx.wallet.update({
+          where: { userId },
+          data: { lockedBalance: 0 },
+        });
+      }
+      return;
+    }
+
+    const external = await this.accounts.getOrCreateSystemExternal(tx);
+    await this.posting.postTransferInTx(tx, {
+      idempotencyKey: `migration:deposit-escrow:${userId}`,
+      referenceType: "DepositEscrowMigration",
+      referenceId: userId,
+      description: "Migrate legacy Wallet.lockedBalance to MEMBER_DEPOSIT_ESCROW",
+      fromAccountId: external.id,
+      toAccountId: escrow.id,
+      amount: gap,
+    });
+
+    await tx.wallet.update({
+      where: { userId },
+      data: { lockedBalance: 0 },
+    });
+  }
+
+  /**
+   * CYCLE: hold contribution×days in MEMBER_DEPOSIT_ESCROW and record a mock DEPOSIT payment.
    * DAILY: no deposit.
    */
   async applyDepositOnJoin(
@@ -72,7 +114,7 @@ export class CycleDepositsService {
       };
     }
 
-    await this.wallets.addLockedEscrow(tx, params.userId, amount);
+    await this.ensureLegacyDepositEscrowMigratedInTx(tx, params.userId);
 
     const pay = await tx.payment.create({
       data: {
@@ -90,19 +132,21 @@ export class CycleDepositsService {
       },
     });
 
-    await this.ledger.record(
-      {
-        type: LedgerEntryType.CREDIT,
-        amount,
-        userId: params.userId,
-        groupId: params.groupId,
-        referenceType: "Deposit",
-        referenceId: pay.id,
-        description: `Security deposit held in escrow for ${params.group.name} (CYCLE mode)`,
-        applyToWallet: false,
-      },
+    const external = await this.accounts.getOrCreateSystemExternal(tx);
+    const escrow = await this.accounts.getOrCreateMemberDepositEscrow(
+      params.userId,
       tx,
     );
+
+    await this.posting.postTransferInTx(tx, {
+      idempotencyKey: `deposit:hold:${pay.id}`,
+      referenceType: "Deposit",
+      referenceId: pay.id,
+      description: `Security deposit held in escrow for ${params.group.name} (CYCLE mode)`,
+      fromAccountId: external.id,
+      toAccountId: escrow.id,
+      amount,
+    });
 
     return { depositAmount: amount, depositStatus: DepositStatus.HELD };
   }
@@ -131,7 +175,23 @@ export class CycleDepositsService {
       return;
     }
 
-    await this.wallets.reduceLockedEscrow(tx, params.userId, amt);
+    await this.ensureLegacyDepositEscrowMigratedInTx(tx, params.userId);
+
+    const escrow = await this.accounts.getOrCreateMemberDepositEscrow(
+      params.userId,
+      tx,
+    );
+    const groupPool = await this.accounts.getOrCreateGroupPool(params.groupId, tx);
+
+    await this.posting.postTransferInTx(tx, {
+      idempotencyKey: `deposit:forfeit:${params.memberId}`,
+      referenceType: "DepositForfeit",
+      referenceId: params.memberId,
+      description: `Forfeited security deposit (DEFAULTED) for ${params.groupName}`,
+      fromAccountId: escrow.id,
+      toAccountId: groupPool.id,
+      amount: amt,
+    });
 
     await tx.groupMember.update({
       where: { id: params.memberId },
@@ -142,20 +202,6 @@ export class CycleDepositsService {
       where: { id: params.userId },
       data: { cycleDefaultFlagged: true },
     });
-
-    await this.ledger.record(
-      {
-        type: LedgerEntryType.DEBIT,
-        amount: amt,
-        userId: params.userId,
-        groupId: params.groupId,
-        referenceType: "DepositForfeit",
-        referenceId: params.memberId,
-        description: `Forfeited security deposit (DEFAULTED) for ${params.groupName}`,
-        applyToWallet: false,
-      },
-      tx,
-    );
   }
 
   /** When the whole group completes, return held deposits to spendable balance. */
@@ -173,24 +219,32 @@ export class CycleDepositsService {
       const amt = new Prisma.Decimal(m.depositAmount.toString());
       if (amt.lte(0)) continue;
       if (m.cycleStanding === MemberCycleStanding.DEFAULTED) continue;
-      await this.wallets.releaseLockedToBalance(tx, m.userId, amt);
+
+      await this.ensureLegacyDepositEscrowMigratedInTx(tx, m.userId);
+
+      const escrow = await this.accounts.getOrCreateMemberDepositEscrow(
+        m.userId,
+        tx,
+      );
+      const available = await this.accounts.getOrCreateMemberWalletAvailable(
+        m.userId,
+        tx,
+      );
+
+      await this.posting.postTransferInTx(tx, {
+        idempotencyKey: `deposit:release:${m.id}`,
+        referenceType: "DepositRelease",
+        referenceId: m.id,
+        description: "Security deposit released (group completed)",
+        fromAccountId: escrow.id,
+        toAccountId: available.id,
+        amount: amt,
+      });
+
       await tx.groupMember.update({
         where: { id: m.id },
         data: { depositStatus: DepositStatus.RELEASED },
       });
-      await this.ledger.record(
-        {
-          type: LedgerEntryType.CREDIT,
-          amount: amt,
-          userId: m.userId,
-          groupId,
-          referenceType: "DepositRelease",
-          referenceId: m.id,
-          description: "Security deposit released (group completed)",
-          applyToWallet: false,
-        },
-        tx,
-      );
     }
   }
 }

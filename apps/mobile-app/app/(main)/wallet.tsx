@@ -212,6 +212,16 @@ export default function WalletScreen() {
         />
       </PremiumCard>
 
+      {w?.reserveDefaultCoverPrompt?.fullyCovered ? (
+        <PremiumCard variant="flat" style={{ marginTop: 12 }} animate={false}>
+          <View style={styles.explainHeader}>
+            <HelpCircle size={18} color={tokens.colors.primary} />
+            <Text style={styles.explainTitle}>Reserve used for your group</Text>
+          </View>
+          <Text style={styles.explainBody}>{w.reserveDefaultCoverPrompt.message}</Text>
+        </PremiumCard>
+      ) : null}
+
       {hasActiveReserves ? (
         <PremiumCard variant="flat" style={{ marginTop: 12 }} animate={false}>
           <View style={styles.explainHeader}>

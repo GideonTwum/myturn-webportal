@@ -7,7 +7,6 @@ describe("WithdrawalsService", () => {
   const allocation = {
     getMemberWalletSummary: vi.fn(),
     getAdminWalletSummary: vi.fn(),
-    syncLegacyMemberWallet: vi.fn(),
   };
   const accounts = {
     getOrCreateMemberWallet: vi.fn(),
@@ -20,6 +19,9 @@ describe("WithdrawalsService", () => {
   const notifications = { create: vi.fn() };
   const audit = { append: vi.fn() };
   const participation = { assertCanParticipateFinancially: vi.fn() };
+  const defaultProtection = {
+    assertWithdrawalNotRestricted: vi.fn().mockResolvedValue(undefined),
+  };
   const idempotency = {
     runOnce: vi.fn(async (_key: string, _ttl: number, fn: () => Promise<unknown>) => ({
       duplicate: false,
@@ -78,6 +80,8 @@ describe("WithdrawalsService", () => {
     accounts.getOrCreateWithdrawalClearing.mockResolvedValue({ id: "clearing" });
     accounts.getOrCreateSystemExternal.mockResolvedValue({ id: "external" });
     participation.assertCanParticipateFinancially.mockResolvedValue(undefined);
+    defaultProtection.assertWithdrawalNotRestricted.mockReset();
+    defaultProtection.assertWithdrawalNotRestricted.mockResolvedValue(undefined);
     prisma.withdrawalRequest.findMany.mockResolvedValue([]);
 
     svc = new WithdrawalsService(
@@ -89,6 +93,7 @@ describe("WithdrawalsService", () => {
       audit as never,
       participation as never,
       idempotency as never,
+      defaultProtection as never,
     );
   });
 
@@ -159,6 +164,19 @@ describe("WithdrawalsService", () => {
 
     expect(result.status).toBe("COMPLETED");
     expect(result.amount.toString()).toBe("42000");
+  });
+
+  it("rejects member withdrawal when default protection restricts account", async () => {
+    defaultProtection.assertWithdrawalNotRestricted.mockRejectedValueOnce(
+      new BadRequestException(
+        "Your withdrawal is temporarily restricted because you have an unresolved contribution in Big men.",
+      ),
+    );
+
+    await expect(
+      svc.createMemberWithdrawal("user-1", "10.00", "233241234567"),
+    ).rejects.toThrow(/temporarily restricted/);
+    expect(allocation.getMemberWalletSummary).not.toHaveBeenCalled();
   });
 
   it("rejects member withdrawal above available balance", async () => {
@@ -247,6 +265,7 @@ describe("WithdrawalsService", () => {
       audit as never,
       participation as never,
       idempotency as never,
+      defaultProtection as never,
     );
     process.env.DISBURSEMENT_PROVIDER = original;
 

@@ -10,6 +10,7 @@ import { addDaysToIsoDate } from "@myturn/shared";
 import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { CycleDepositsService } from "./cycle-deposits.service";
+import { DefaultProtectionService } from "./default-protection.service";
 
 function utcDayStart(d: Date): Date {
   return new Date(
@@ -31,6 +32,7 @@ export class CycleComplianceService {
     private prisma: PrismaService,
     private deposits: CycleDepositsService,
     private notifications: NotificationsService,
+    private defaultProtection: DefaultProtectionService,
   ) {}
 
   /** Evaluate LATE / DEFAULTED for one active CYCLE group (idempotent transitions). */
@@ -73,7 +75,16 @@ export class CycleComplianceService {
       if (!c) continue;
 
       if (c.status === ContributionStatus.PAID) {
-        if (m.cycleStanding !== MemberCycleStanding.DEFAULTED) {
+        if (m.cycleStanding === MemberCycleStanding.DEFAULTED) {
+          await this.prisma.$transaction(async (tx) => {
+            await this.defaultProtection.onContributionFullySettled(tx, {
+              memberId: m.id,
+              userId: m.userId,
+              groupId,
+              groupName: group.name,
+            });
+          });
+        } else if (m.cycleStanding !== MemberCycleStanding.ACTIVE) {
           await this.prisma.groupMember.update({
             where: { id: m.id },
             data: { cycleStanding: MemberCycleStanding.ACTIVE },
@@ -85,10 +96,7 @@ export class CycleComplianceService {
       const expected = c.expectedDayCount;
       const paid = c.paidDayCount;
       const daysSince = calendarDaysBetweenUtc(cycleStart, now);
-      const requiredPaid = Math.min(
-        expected,
-        Math.max(0, daysSince),
-      );
+      const requiredPaid = Math.min(expected, Math.max(0, daysSince));
 
       const defaultDeadlineIso = addDaysToIsoDate(
         cycleStartIso,
@@ -118,12 +126,20 @@ export class CycleComplianceService {
             groupId,
             groupName: group.name,
           });
+          await this.defaultProtection.onMemberNewlyDefaulted(tx, {
+            memberId: m.id,
+            userId: m.userId,
+            groupId,
+            groupName: group.name,
+            cycleNumber: currentCycle,
+            contributionId: c.id,
+          });
         });
 
         await this.notifications.create(
           m.userId,
-          "Marked as defaulted",
-          `You were marked DEFAULTED on cycle ${currentCycle} of ${group.name} for missing contributions past the grace period. Your security deposit was forfeited and you cannot receive payouts for this group.`,
+          "Account restricted",
+          `Your MyTurn participation in ${group.name} has been restricted due to missed contributions.`,
           "CYCLE_DEFAULTED",
           { groupId, cycle: currentCycle },
         );
@@ -139,12 +155,20 @@ export class CycleComplianceService {
 
       if (
         nextStanding === MemberCycleStanding.LATE &&
-        m.cycleStanding !== MemberCycleStanding.DEFAULTED
+        m.cycleStanding !== MemberCycleStanding.DEFAULTED &&
+        m.cycleStanding !== MemberCycleStanding.LATE
       ) {
         await this.prisma.groupMember.update({
           where: { id: m.id },
           data: { cycleStanding: MemberCycleStanding.LATE },
         });
+        await this.notifications.create(
+          m.userId,
+          "Contribution overdue",
+          `Your contribution for ${group.name} is overdue. Please pay to stay eligible for payouts.`,
+          "CYCLE_PAYMENT_OVERDUE",
+          { groupId, cycle: currentCycle, contributionId: c.id },
+        );
       } else if (
         nextStanding === MemberCycleStanding.ACTIVE &&
         m.cycleStanding !== MemberCycleStanding.DEFAULTED
@@ -220,6 +244,7 @@ export class CycleComplianceService {
     }
   }
 
+  /** @deprecated Use payout skip logic — retained for payout-readiness flags only. */
   hasBlockingDefaults(
     members: { userId: string; cycleStanding: MemberCycleStanding }[],
     allowOverride: boolean,

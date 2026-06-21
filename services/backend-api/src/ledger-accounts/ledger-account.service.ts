@@ -5,6 +5,7 @@ import {
   adminEarningsKey,
   DEFAULT_CURRENCY,
   groupPoolKey,
+  memberDepositEscrowKey,
   memberWalletAvailableKey,
   memberWalletKey,
   memberWalletReservedKey,
@@ -95,6 +96,19 @@ export class LedgerAccountService {
     return this.getOrCreateByKey(
       memberWalletReservedKey(userId, currency),
       LedgerAccountType.MEMBER_WALLET_RESERVED,
+      { userId, currency },
+      tx,
+    );
+  }
+
+  async getOrCreateMemberDepositEscrow(
+    userId: string,
+    tx?: Tx,
+    currency = DEFAULT_CURRENCY,
+  ) {
+    return this.getOrCreateByKey(
+      memberDepositEscrowKey(userId, currency),
+      LedgerAccountType.MEMBER_DEPOSIT_ESCROW,
       { userId, currency },
       tx,
     );

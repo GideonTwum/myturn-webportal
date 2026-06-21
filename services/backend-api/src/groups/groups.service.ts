@@ -24,10 +24,12 @@ import { getPublicApiBaseUrl } from "../common/platform-env";
 import {
   computeGroupFinancePreview,
   getFixedGroupFinancePlatformSettings,
+  selectPayoutRecipient,
   summarizeCycle,
 } from "@myturn/shared";
 import { memberCyclePaymentDays } from "../common/member-cycle-payment-days";
 import { CycleComplianceService } from "../cycle-risk/cycle-compliance.service";
+import { DefaultProtectionService } from "../cycle-risk/default-protection.service";
 import { CycleDepositsService } from "../cycle-risk/cycle-deposits.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { AuditLogsService } from "../audit-logs/audit-logs.service";
@@ -98,6 +100,7 @@ export class GroupsService {
     private users: UsersService,
     private deposits: CycleDepositsService,
     private cycleCompliance: CycleComplianceService,
+    private defaultProtection: DefaultProtectionService,
   ) {}
 
   async create(adminId: string, input: CreateGroupInput) {
@@ -298,7 +301,7 @@ export class GroupsService {
     const group = await this.get(groupId, viewer);
     const members = [...group.members]
       .filter((m) => m.status === "ACTIVE")
-      .sort((a, b) => a.turnOrder - b.turnOrder);
+      .sort((a, b) => a.effectivePayoutOrder - b.effectivePayoutOrder);
     const n = members.length;
     const totalCycles = group.memberSlots;
     const currentCycle = group.currentCycle;
@@ -324,12 +327,14 @@ export class GroupsService {
         firstName: m.user.firstName,
         lastName: m.user.lastName,
         turnOrder: m.turnOrder,
+        effectivePayoutOrder: m.effectivePayoutOrder,
         contributionId: c?.id ?? null,
         status: c?.status ?? "MISSING",
         paidDayCount: paidDays,
         expectedDayCount: expectedDays,
         isPaid: c?.status === "PAID",
         cycleStanding: m.cycleStanding,
+        defaultedAt: m.defaultedAt?.toISOString() ?? null,
         depositStatus: m.depositStatus,
         depositAmount: m.depositAmount.toString(),
       };
@@ -351,52 +356,50 @@ export class GroupsService {
       firstName: string | null;
       lastName: string | null;
       turnOrder: number;
+      effectivePayoutOrder: number;
     } | null = null;
+    let skippedDefaultedRecipients: string[] = [];
     if (n > 0 && group.status === GroupStatus.ACTIVE) {
-      const turnIndex = (currentCycle - 1) % n;
-      const mem = members[turnIndex];
+      const queue = members.map((m) => ({
+        userId: m.userId,
+        turnOrder: m.turnOrder,
+        effectivePayoutOrder: m.effectivePayoutOrder,
+        cycleStanding: m.cycleStanding,
+      }));
+      const selection = selectPayoutRecipient(queue, currentCycle, {
+        allowOverride: group.allowPayoutOverride,
+      });
+      skippedDefaultedRecipients = selection.skippedDefaulted.map((s) => s.userId);
+      const mem = selection.recipient
+        ? members.find((m) => m.userId === selection.recipient!.userId)
+        : null;
       if (mem) {
         expectedPayoutRecipient = {
           userId: mem.userId,
           firstName: mem.user.firstName,
           lastName: mem.user.lastName,
           turnOrder: mem.turnOrder,
+          effectivePayoutOrder: mem.effectivePayoutOrder,
         };
       }
     }
 
-    const memberStandingRows = members.map((m) => ({
-      userId: m.userId,
-      cycleStanding: m.cycleStanding,
-    }));
-
-    const complianceBlocksPayout =
-      group.payoutMode === PayoutMode.CYCLE &&
-      this.cycleCompliance.hasBlockingDefaults(
-        memberStandingRows,
-        group.allowPayoutOverride,
-      );
-
-    const recipientDefaultBlocked =
-      group.payoutMode === PayoutMode.CYCLE &&
-      !!expectedPayoutRecipient &&
-      this.cycleCompliance.recipientBlocked(
-        expectedPayoutRecipient.userId,
-        memberStandingRows,
-        group.allowPayoutOverride,
-      );
-
     const hasDefaultedMembers = members.some(
       (m) => m.cycleStanding === MemberCycleStanding.DEFAULTED,
     );
+
+    const noEligibleRecipient =
+      group.payoutMode === PayoutMode.CYCLE &&
+      n > 0 &&
+      !expectedPayoutRecipient &&
+      !group.allowPayoutOverride;
 
     const canFinalize =
       group.status === GroupStatus.ACTIVE &&
       allPaid &&
       !existingPayout &&
       currentCycle <= totalCycles &&
-      !complianceBlocksPayout &&
-      !recipientDefaultBlocked;
+      !noEligibleRecipient;
 
     return {
       groupId: group.id,
@@ -409,8 +412,9 @@ export class GroupsService {
       payoutMode: group.payoutMode,
       defaultGraceDays: group.defaultGraceDays,
       allowPayoutOverride: group.allowPayoutOverride,
-      complianceBlocksPayout,
-      recipientDefaultBlocked,
+      complianceBlocksPayout: noEligibleRecipient,
+      recipientDefaultBlocked: noEligibleRecipient,
+      skippedDefaultedRecipients,
       hasDefaultedMembers,
       members: contributionLine,
       unpaidMembers,
@@ -717,6 +721,8 @@ export class GroupsService {
       throw new BadRequestException("You are already a member of this group.");
     }
 
+    await this.defaultProtection.assertCanJoinNewGroup(user.id);
+
     const nextTurnOrder =
       group.members.reduce((max, m) => Math.max(max, m.turnOrder), 0) + 1;
 
@@ -726,6 +732,7 @@ export class GroupsService {
           groupId: group.id,
           userId: user.id,
           turnOrder: nextTurnOrder,
+          effectivePayoutOrder: nextTurnOrder,
           depositAmount: 0,
           depositStatus: DepositStatus.NOT_REQUIRED,
         },
@@ -806,7 +813,18 @@ export class GroupsService {
       remainingDays: number;
       contributionStatus: ContributionStatus | null;
       cycleStanding: MemberCycleStanding;
+      reserveDefaultCoverPrompt: {
+        groupId: string;
+        groupName: string;
+        fullyCovered: boolean;
+        message: string;
+      } | null;
     }> = [];
+
+    const reservePrompts =
+      await this.defaultProtection.getRecentReserveDefaultCoverPromptsByGroup(
+        userId,
+      );
 
     for (const m of memberships) {
       const g = m.group;
@@ -859,6 +877,8 @@ export class GroupsService {
         remainingDays: remaining,
         contributionStatus: contribution?.status ?? null,
         cycleStanding: m.cycleStanding,
+        reserveDefaultCoverPrompt:
+          reservePrompts.get(g.id) ?? null,
       });
     }
 
@@ -1043,6 +1063,39 @@ export class GroupsService {
       where: { groupId, cycleNumber: currentCycle },
     });
     const byUser = new Map(contributions.map((c) => [c.userId, c]));
+    const [payouts, reserves] = await Promise.all([
+      this.prisma.payout.findMany({
+        where: { groupId },
+        select: { recipientId: true, cycleNumber: true },
+      }),
+      this.prisma.contributionGuaranteeReserve.findMany({
+        where: { groupId },
+        select: {
+          userId: true,
+          status: true,
+          remainingReserveAmount: true,
+          usedForDefaultAmount: true,
+        },
+      }),
+    ]);
+    const payoutCyclesByUser = new Map<string, number[]>();
+    for (const p of payouts) {
+      const list = payoutCyclesByUser.get(p.recipientId) ?? [];
+      list.push(p.cycleNumber);
+      payoutCyclesByUser.set(p.recipientId, list);
+    }
+    const reserveByUser = new Map(reserves.map((r) => [r.userId, r]));
+
+    const queue = members.map((m) => ({
+      userId: m.userId,
+      turnOrder: m.turnOrder,
+      effectivePayoutOrder: m.effectivePayoutOrder,
+      cycleStanding: m.cycleStanding,
+    }));
+    const payoutSelection = selectPayoutRecipient(queue, currentCycle, {
+      allowOverride: group.allowPayoutOverride,
+    });
+
     return {
       groupId: group.id,
       groupName: group.name,
@@ -1051,16 +1104,33 @@ export class GroupsService {
       currentCycle,
       defaultGraceDays: group.defaultGraceDays,
       allowPayoutOverride: group.allowPayoutOverride,
+      expectedPayoutRecipientUserId: payoutSelection.recipient?.userId ?? null,
+      skippedDefaultedRecipientUserIds: payoutSelection.skippedDefaulted.map(
+        (s) => s.userId,
+      ),
       members: members.map((m) => {
         const c = byUser.get(m.userId);
+        const reserve = reserveByUser.get(m.userId);
         return {
           userId: m.userId,
           firstName: m.user.firstName,
           lastName: m.user.lastName,
           turnOrder: m.turnOrder,
+          effectivePayoutOrder: m.effectivePayoutOrder,
           cycleStanding: m.cycleStanding,
+          defaultedAt: m.defaultedAt?.toISOString() ?? null,
+          resolvedAt: m.resolvedAt?.toISOString() ?? null,
+          hasReceivedPayout: (payoutCyclesByUser.get(m.userId)?.length ?? 0) > 0,
+          payoutCyclesReceived: payoutCyclesByUser.get(m.userId) ?? [],
           depositStatus: m.depositStatus,
           depositAmount: m.depositAmount.toString(),
+          reserve: reserve
+            ? {
+                status: reserve.status,
+                remainingReserveAmount: reserve.remainingReserveAmount.toString(),
+                usedForDefaultAmount: reserve.usedForDefaultAmount.toString(),
+              }
+            : null,
           contribution: c
             ? {
                 id: c.id,
@@ -1128,6 +1198,7 @@ export class GroupsService {
           groupId,
           userId: newUserId,
           turnOrder: oldM.turnOrder,
+          effectivePayoutOrder: oldM.effectivePayoutOrder,
           depositAmount: 0,
           depositStatus: DepositStatus.NOT_REQUIRED,
           cycleStanding: MemberCycleStanding.ACTIVE,

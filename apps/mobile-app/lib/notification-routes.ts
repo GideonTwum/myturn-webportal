@@ -33,7 +33,9 @@ export function resolveNotificationRoute(n: NotificationRow): NotificationRoute 
   }
 
   if (
-    (type.includes("PAYMENT") || type.includes("CONTRIBUTION")) &&
+    (type.includes("PAYMENT") ||
+      type.includes("CONTRIBUTION") ||
+      type.includes("RESERVE")) &&
     meta.contributionId
   ) {
     return {
@@ -59,6 +61,7 @@ export function shouldShowViewAction(n: NotificationRow): boolean {
     type.includes("PAYOUT") ||
     type.includes("PAYMENT") ||
     type.includes("CONTRIBUTION") ||
+    type.includes("RESERVE") ||
     type.includes("GROUP") ||
     type.includes("VERIFY") ||
     type.includes("TRUST") ||

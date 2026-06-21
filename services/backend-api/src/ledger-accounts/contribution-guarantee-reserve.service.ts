@@ -1,6 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import {
   ContributionGuaranteeReserveStatus,
+  ContributionStatus,
   GroupStatus,
   Prisma,
 } from "@prisma/client";
@@ -8,6 +9,7 @@ import {
   computeReleasePerUnitMinor,
   computeReserveAmountMinor,
   computeReserveBps,
+  missedContributionMinor,
   nextReserveReleaseMinor,
   postPayoutContributionUnits,
 } from "@myturn/shared";
@@ -285,6 +287,187 @@ export class ContributionGuaranteeReserveService {
     };
   }
 
+  /**
+   * Apply reserved funds to cover a missed contribution (DEFAULT_COVER).
+   * Transfers MEMBER_WALLET_RESERVED → GROUP_POOL — does not release to available wallet.
+   */
+  async coverDefaultFromReserveInTx(
+    tx: Prisma.TransactionClient,
+    params: {
+      userId: string;
+      groupId: string;
+      contributionId: string;
+    },
+  ): Promise<{
+    covered: boolean;
+    amount?: string;
+    fullyCovered?: boolean;
+    partial?: boolean;
+    reserveId?: string;
+    duplicate?: boolean;
+  }> {
+    if (!getContributionReserveConfig().enabled) {
+      return { covered: false };
+    }
+
+    const contribution = await tx.contribution.findUnique({
+      where: { id: params.contributionId },
+    });
+    if (
+      !contribution ||
+      contribution.userId !== params.userId ||
+      contribution.groupId !== params.groupId ||
+      contribution.status === ContributionStatus.PAID
+    ) {
+      return { covered: false };
+    }
+
+    const missedMinor = missedContributionMinor(
+      toMinor(new Prisma.Decimal(contribution.amount.toString())),
+      contribution.expectedDayCount,
+      contribution.paidDayCount,
+    );
+    if (missedMinor <= 0n) {
+      return { covered: false };
+    }
+
+    const reserve = await tx.contributionGuaranteeReserve.findFirst({
+      where: {
+        userId: params.userId,
+        groupId: params.groupId,
+        status: ContributionGuaranteeReserveStatus.ACTIVE,
+      },
+    });
+    if (!reserve) {
+      return { covered: false };
+    }
+
+    const idempotencyKey = `reserve:default-cover:${reserve.id}:contribution:${params.contributionId}`;
+    const existing = await tx.defaultCoverage.findUnique({
+      where: { idempotencyKey },
+    });
+    if (existing) {
+      return {
+        covered: true,
+        duplicate: true,
+        amount: existing.coveredAmount.toFixed(2),
+        reserveId: reserve.id,
+        fullyCovered: existing.coveredAmount.gte(existing.missedAmount),
+      };
+    }
+
+    const remainingMinor = toMinor(
+      new Prisma.Decimal(reserve.remainingReserveAmount.toString()),
+    );
+    if (remainingMinor <= 0n) {
+      return { covered: false };
+    }
+
+    const coverMinor =
+      missedMinor < remainingMinor ? missedMinor : remainingMinor;
+    const coverAmount = fromMinor(coverMinor);
+    const missedAmount = fromMinor(missedMinor);
+
+    const reservedAcct = await this.accounts.getOrCreateMemberWalletReserved(
+      params.userId,
+      tx,
+    );
+    const poolAcct = await this.accounts.getOrCreateGroupPool(
+      params.groupId,
+      tx,
+    );
+
+    const transfer = await this.posting.postTransferInTx(tx, {
+      idempotencyKey,
+      referenceType: "DefaultCoverage",
+      referenceId: params.contributionId,
+      description: "Contribution Guarantee Reserve applied to missed contribution",
+      metadata: {
+        reason: "DEFAULT_COVER",
+        contributionId: params.contributionId,
+        groupId: params.groupId,
+        userId: params.userId,
+        reserveId: reserve.id,
+      },
+      fromAccountId: reservedAcct.id,
+      toAccountId: poolAcct.id,
+      amount: coverAmount,
+    });
+
+    if (transfer.duplicate) {
+      const row = await tx.defaultCoverage.findUnique({
+        where: { idempotencyKey },
+      });
+      return {
+        covered: !!row,
+        duplicate: true,
+        amount: row?.coveredAmount.toFixed(2),
+        reserveId: reserve.id,
+        fullyCovered: row
+          ? row.coveredAmount.gte(row.missedAmount)
+          : undefined,
+      };
+    }
+
+    const newRemaining = new Prisma.Decimal(
+      reserve.remainingReserveAmount.toString(),
+    ).sub(coverAmount);
+    const newUsedForDefault = new Prisma.Decimal(
+      reserve.usedForDefaultAmount.toString(),
+    ).add(coverAmount);
+
+    const zeroRemaining = newRemaining.lte(0);
+    await tx.contributionGuaranteeReserve.update({
+      where: { id: reserve.id },
+      data: {
+        remainingReserveAmount: Prisma.Decimal.max(
+          newRemaining,
+          new Prisma.Decimal(0),
+        ),
+        usedForDefaultAmount: newUsedForDefault,
+        ...(zeroRemaining
+          ? { status: ContributionGuaranteeReserveStatus.RELEASED }
+          : {}),
+      },
+    });
+
+    await tx.defaultCoverage.create({
+      data: {
+        userId: params.userId,
+        groupId: params.groupId,
+        contributionId: params.contributionId,
+        reserveId: reserve.id,
+        coveredAmount: coverAmount,
+        missedAmount,
+        idempotencyKey,
+        metadata: {
+          reason: "DEFAULT_COVER",
+          fullyCovered: coverMinor >= missedMinor,
+        },
+      },
+    });
+
+    const fullyCovered = coverMinor >= missedMinor;
+    if (fullyCovered) {
+      await tx.contribution.update({
+        where: { id: params.contributionId },
+        data: {
+          status: ContributionStatus.PAID,
+          paidDayCount: contribution.expectedDayCount,
+          paidAt: new Date(),
+        },
+      });
+    }
+
+    return {
+      covered: true,
+      amount: coverAmount.toFixed(2),
+      fullyCovered,
+      partial: !fullyCovered,
+      reserveId: reserve.id,
+    };
+  }
+
   /** @deprecated Use tryReleaseOnPaymentSettledInTx */
   async tryReleaseOnContributionPaidInTx(
     tx: Prisma.TransactionClient,
@@ -349,12 +532,13 @@ export class ContributionGuaranteeReserveService {
       where: {
         groupId: params.groupId,
         status: ContributionGuaranteeReserveStatus.ACTIVE,
-        remainingReserveAmount: { gt: 0 },
       },
     });
 
     const results: GroupCompletedReserveRelease[] = [];
+    const userIds = new Set<string>();
     for (const reserve of reserves) {
+      userIds.add(reserve.userId);
       const result = await this.releaseFinalReserveOnGroupCompletedInTx(
         tx,
         reserve,
@@ -364,7 +548,51 @@ export class ContributionGuaranteeReserveService {
         results.push(result);
       }
     }
+
+    for (const userId of userIds) {
+      await this.sweepOrphanedReservedBalanceInTx(tx, userId);
+    }
+
     return results;
+  }
+
+  /**
+   * When no ACTIVE reserves remain globally, move stray MEMBER_WALLET_RESERVED balance to available.
+   */
+  private async sweepOrphanedReservedBalanceInTx(
+    tx: Prisma.TransactionClient,
+    userId: string,
+  ) {
+    const activeCount = await tx.contributionGuaranteeReserve.count({
+      where: {
+        userId,
+        status: ContributionGuaranteeReserveStatus.ACTIVE,
+      },
+    });
+    if (activeCount > 0) return;
+
+    const reservedAcct = await this.accounts.getOrCreateMemberWalletReserved(
+      userId,
+      tx,
+    );
+    const balance = await this.accounts.getBalance(reservedAcct.id, tx);
+    if (balance.lte(0)) return;
+
+    const availableAcct = await this.accounts.getOrCreateMemberWalletAvailable(
+      userId,
+      tx,
+    );
+
+    await this.posting.postTransferInTx(tx, {
+      idempotencyKey: `reserve:orphan-sweep:${userId}`,
+      referenceType: "ContributionGuaranteeReserve",
+      referenceId: userId,
+      description: "Release orphaned reserved balance after all reserves closed",
+      metadata: { releaseReason: "ORPHAN_SWEEP", userId },
+      fromAccountId: reservedAcct.id,
+      toAccountId: availableAcct.id,
+      amount: balance,
+    });
   }
 
   private async releaseFinalReserveOnGroupCompletedInTx(
@@ -395,6 +623,11 @@ export class ContributionGuaranteeReserveService {
       reserve.remainingReserveAmount.toString(),
     );
     if (remaining.lte(0)) {
+      await this.markReserveFullyReleasedInTx(
+        tx,
+        reserve,
+        new Prisma.Decimal(0),
+      );
       return base;
     }
 
@@ -480,24 +713,34 @@ export class ContributionGuaranteeReserveService {
         ? (reserve.metadata as Record<string, unknown>)
         : {};
 
+    const data: {
+      remainingReserveAmount: Prisma.Decimal;
+      contributionsReleasedCount: number;
+      status: ContributionGuaranteeReserveStatus;
+      metadata: Prisma.InputJsonValue;
+      releasedAmount?: Prisma.Decimal;
+    } = {
+      remainingReserveAmount: new Prisma.Decimal(0),
+      contributionsReleasedCount: reserve.remainingContributionCountAtCreation,
+      status: ContributionGuaranteeReserveStatus.RELEASED,
+      metadata: {
+        ...priorMeta,
+        releaseReason: "GROUP_COMPLETED",
+        groupId: reserve.groupId,
+        reserveId: reserve.id,
+        payoutId: reserve.payoutId,
+        finalReleasedAt: new Date().toISOString(),
+      },
+    };
+    if (releaseAmount.gt(0)) {
+      data.releasedAmount = new Prisma.Decimal(
+        reserve.releasedAmount.toString(),
+      ).add(releaseAmount);
+    }
+
     await tx.contributionGuaranteeReserve.update({
       where: { id: reserve.id },
-      data: {
-        remainingReserveAmount: new Prisma.Decimal(0),
-        releasedAmount: new Prisma.Decimal(reserve.releasedAmount.toString()).add(
-          releaseAmount,
-        ),
-        contributionsReleasedCount: reserve.remainingContributionCountAtCreation,
-        status: ContributionGuaranteeReserveStatus.RELEASED,
-        metadata: {
-          ...priorMeta,
-          releaseReason: "GROUP_COMPLETED",
-          groupId: reserve.groupId,
-          reserveId: reserve.id,
-          payoutId: reserve.payoutId,
-          finalReleasedAt: new Date().toISOString(),
-        },
-      },
+      data,
     });
   }
 
@@ -596,6 +839,7 @@ export class ContributionGuaranteeReserveService {
       payoutPosition: r.payoutPosition,
       status: r.status,
       defaultRisk: r.user.cycleDefaultFlagged ? "high" : "normal",
+      usedForDefaultAmount: r.usedForDefaultAmount.toFixed(2),
       ...this.mapReserveRow(r),
     }));
   }

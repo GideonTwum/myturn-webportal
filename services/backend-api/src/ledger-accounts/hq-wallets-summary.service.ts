@@ -24,6 +24,7 @@ export class HqWalletsSummaryService {
     const [
       memberAvailable,
       memberReserved,
+      memberDepositEscrow,
       legacyMemberWallets,
       legacyAdminWallets,
       groupPools,
@@ -36,6 +37,10 @@ export class HqWalletsSummaryService {
       }),
       this.prisma.ledgerAccount.aggregate({
         where: { accountType: LedgerAccountType.MEMBER_WALLET_RESERVED },
+        _sum: { balance: true },
+      }),
+      this.prisma.ledgerAccount.aggregate({
+        where: { accountType: LedgerAccountType.MEMBER_DEPOSIT_ESCROW },
         _sum: { balance: true },
       }),
       this.prisma.ledgerAccount.aggregate({
@@ -70,10 +75,13 @@ export class HqWalletsSummaryService {
       memberAvailable._sum.balance ?? new Prisma.Decimal(0);
     const reservedLiabilities =
       memberReserved._sum.balance ?? new Prisma.Decimal(0);
+    const depositEscrowLiabilities =
+      memberDepositEscrow._sum.balance ?? new Prisma.Decimal(0);
     const legacyMemberLiabilities =
       legacyMemberWallets._sum.balance ?? new Prisma.Decimal(0);
     const memberLiabilities = availableLiabilities
       .add(reservedLiabilities)
+      .add(depositEscrowLiabilities)
       .add(legacyMemberLiabilities);
     const legacyAdminLiabilities =
       legacyAdminWallets._sum.balance ?? new Prisma.Decimal(0);
@@ -89,6 +97,7 @@ export class HqWalletsSummaryService {
       ).toFixed(2),
       totalMemberWalletAvailable: availableLiabilities.toFixed(2),
       totalMemberWalletReserved: reservedLiabilities.toFixed(2),
+      totalMemberDepositEscrow: depositEscrowLiabilities.toFixed(2),
       totalMemberWalletLiabilities: memberLiabilities.toFixed(2),
       legacyAdminEarningsLiabilities: legacyAdminLiabilities.toFixed(2),
       totalAdminEarningsLiabilities: legacyAdminLiabilities.toFixed(2),

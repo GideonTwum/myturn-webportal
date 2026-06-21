@@ -102,6 +102,8 @@ enum LedgerAccountType {
   MEMBER_WALLET
   MEMBER_WALLET_AVAILABLE
   MEMBER_WALLET_RESERVED
+  /** CYCLE security deposits held until group completion or forfeit. */
+  MEMBER_DEPOSIT_ESCROW
   ADMIN_EARNINGS
   MYTURN_REVENUE
   WITHDRAWAL_CLEARING
@@ -262,9 +264,13 @@ model GroupMember {
   status     GroupMemberStatus @default(ACTIVE)
   /** CYCLE groups: payment discipline for the current period (see cycle compliance job). */
   cycleStanding   MemberCycleStanding @default(ACTIVE)
-  /** CYCLE: contributionAmount × daysPerCycle held in wallet.lockedBalance while HELD. */
+  /** CYCLE: contributionAmount × daysPerCycle held in MEMBER_DEPOSIT_ESCROW while HELD. */
   depositAmount   Decimal             @default(0) @db.Decimal(18, 2)
   depositStatus   DepositStatus       @default(NOT_REQUIRED)
+  /** Payout queue priority (defaults to turnOrder; bumped to end on default without payout). */
+  effectivePayoutOrder Int
+  defaultedAt        DateTime?
+  resolvedAt         DateTime?
   joinedAt   DateTime          @default(now())
 
   @@unique([groupId, userId])
@@ -349,6 +355,8 @@ model ContributionGuaranteeReserve {
   originalReserveAmount              Decimal                           @db.Decimal(18, 2)
   remainingReserveAmount             Decimal                           @db.Decimal(18, 2)
   releasedAmount                     Decimal                           @default(0) @db.Decimal(18, 2)
+  /** Cumulative reserve applied to cover missed contributions (DEFAULT_COVER). */
+  usedForDefaultAmount               Decimal                           @default(0) @db.Decimal(18, 2)
   releasePerContributionAmount       Decimal                           @db.Decimal(18, 2)
   remainingContributionCountAtCreation Int
   contributionsReleasedCount         Int                               @default(0)
@@ -358,9 +366,29 @@ model ContributionGuaranteeReserve {
   createdAt                          DateTime                          @default(now())
   updatedAt                          DateTime                          @updatedAt
 
+  defaultCoverages DefaultCoverage[]
+
   @@index([userId, groupId, status])
   @@index([groupId, status])
   @@index([status])
+}
+
+/** Audit trail when reserve or partial coverage settles a missed contribution. */
+model DefaultCoverage {
+  id             String   @id @default(cuid())
+  userId         String
+  groupId        String
+  contributionId String
+  reserveId      String?
+  reserve        ContributionGuaranteeReserve? @relation(fields: [reserveId], references: [id])
+  coveredAmount  Decimal  @db.Decimal(18, 2)
+  missedAmount   Decimal  @db.Decimal(18, 2)
+  idempotencyKey String   @unique
+  metadata       Json?
+  createdAt      DateTime @default(now())
+
+  @@index([userId, groupId])
+  @@index([contributionId])
 }
 
 model Wallet {

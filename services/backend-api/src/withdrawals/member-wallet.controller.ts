@@ -14,6 +14,7 @@ import { RequireVerifiedMember } from "../common/decorators/require-verified-mem
 import { Roles } from "../common/decorators/roles.decorator";
 import { RolesGuard } from "../common/guards/roles.guard";
 import { VerifiedMemberGuard } from "../common/guards/verified-member.guard";
+import { DefaultProtectionService } from "../cycle-risk/default-protection.service";
 import { FinancialAllocationService } from "../ledger-accounts/financial-allocation.service";
 import { CreateWithdrawalDto } from "./dto/create-withdrawal.dto";
 import { WithdrawalsService } from "./withdrawals.service";
@@ -28,11 +29,16 @@ export class MemberWalletController {
   constructor(
     private allocation: FinancialAllocationService,
     private withdrawals: WithdrawalsService,
+    private defaultProtection: DefaultProtectionService,
   ) {}
 
   @Get("wallet")
-  wallet(@Req() req: AuthedReq) {
-    return this.allocation.getMemberWalletSummary(req.user.sub);
+  async wallet(@Req() req: AuthedReq) {
+    const [summary, reserveDefaultCoverPrompt] = await Promise.all([
+      this.allocation.getMemberWalletSummary(req.user.sub),
+      this.defaultProtection.getRecentReserveDefaultCoverPrompt(req.user.sub),
+    ]);
+    return { ...summary, reserveDefaultCoverPrompt };
   }
 
   @Get("wallet/activity")

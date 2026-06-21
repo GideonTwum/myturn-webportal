@@ -16,7 +16,7 @@ import {
   DepositStatus,
   GroupMemberStatus,
   GroupStatus,
-  LedgerEntryType,
+  LedgerAccountType,
   PaymentStatus,
   PaymentType,
   PayoutMode,
@@ -52,27 +52,67 @@ function depositRequiredAmount(group: {
   );
 }
 
-async function addLockedEscrow(
+async function getOrCreateLedgerAccount(
   tx: Prisma.TransactionClient,
-  userId: string,
-  amount: Prisma.Decimal,
-): Promise<void> {
-  const existing = await tx.wallet.findUnique({ where: { userId } });
-  const prev =
-    existing?.lockedBalance != null
-      ? new Prisma.Decimal(existing.lockedBalance.toString())
-      : new Prisma.Decimal(0);
-  const next = prev.add(amount);
-  await tx.wallet.upsert({
-    where: { userId },
-    create: {
-      userId,
-      balance: 0,
-      lockedBalance: amount,
+  accountKey: string,
+  accountType: LedgerAccountType,
+  userId?: string,
+) {
+  const existing = await tx.ledgerAccount.findUnique({ where: { accountKey } });
+  if (existing) return existing;
+  return tx.ledgerAccount.create({
+    data: {
+      accountKey,
+      accountType,
+      userId: userId ?? null,
       currency: "GHS",
+      balance: 0,
     },
-    update: { lockedBalance: next },
   });
+}
+
+async function postTransferInTx(
+  tx: Prisma.TransactionClient,
+  params: {
+    idempotencyKey: string;
+    referenceType: string;
+    referenceId: string;
+    description: string;
+    fromAccountId: string;
+    toAccountId: string;
+    amount: Prisma.Decimal;
+  },
+) {
+  const neg = params.amount.mul(-1);
+  const transaction = await tx.ledgerTransaction.create({
+    data: {
+      idempotencyKey: params.idempotencyKey,
+      referenceType: params.referenceType,
+      referenceId: params.referenceId,
+      description: params.description,
+    },
+  });
+  for (const [accountId, delta] of [
+    [params.fromAccountId, neg],
+    [params.toAccountId, params.amount],
+  ] as const) {
+    const account = await tx.ledgerAccount.findUniqueOrThrow({
+      where: { id: accountId },
+    });
+    const nextBalance = new Prisma.Decimal(account.balance.toString()).add(delta);
+    await tx.ledgerAccount.update({
+      where: { id: account.id },
+      data: { balance: nextBalance },
+    });
+    await tx.ledgerLine.create({
+      data: {
+        transactionId: transaction.id,
+        accountId: account.id,
+        delta,
+        balanceAfter: nextBalance,
+      },
+    });
+  }
 }
 
 async function applyDepositOnJoin(
@@ -97,8 +137,6 @@ async function applyDepositOnJoin(
     };
   }
 
-  await addLockedEscrow(tx, params.userId, amount);
-
   const pay = await tx.payment.create({
     data: {
       userId: params.userId,
@@ -112,17 +150,26 @@ async function applyDepositOnJoin(
     },
   });
 
-  await tx.ledgerEntry.create({
-    data: {
-      type: LedgerEntryType.CREDIT,
-      amount,
-      userId: params.userId,
-      groupId: params.groupId,
-      referenceType: "Deposit",
-      referenceId: pay.id,
-      description: `Security deposit held in escrow for ${params.groupName} (CYCLE mode)`,
-      metadata: { seed: true },
-    },
+  const external = await getOrCreateLedgerAccount(
+    tx,
+    "SYSTEM_EXTERNAL:GHS",
+    LedgerAccountType.SYSTEM_EXTERNAL,
+  );
+  const escrow = await getOrCreateLedgerAccount(
+    tx,
+    `MEMBER_DEPOSIT_ESCROW:${params.userId}:GHS`,
+    LedgerAccountType.MEMBER_DEPOSIT_ESCROW,
+    params.userId,
+  );
+
+  await postTransferInTx(tx, {
+    idempotencyKey: `seed:deposit:hold:${pay.id}`,
+    referenceType: "Deposit",
+    referenceId: pay.id,
+    description: `Security deposit held in escrow for ${params.groupName} (CYCLE mode)`,
+    fromAccountId: external.id,
+    toAccountId: escrow.id,
+    amount,
   });
 
   return { depositAmount: amount, depositStatus: DepositStatus.HELD };
@@ -230,6 +277,7 @@ async function main() {
           groupId: group.id,
           userId: user.id,
           turnOrder: nextTurnOrder,
+          effectivePayoutOrder: nextTurnOrder,
           depositAmount: 0,
           depositStatus: DepositStatus.NOT_REQUIRED,
         },

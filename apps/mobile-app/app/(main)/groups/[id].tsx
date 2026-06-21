@@ -7,7 +7,7 @@ import {
   Text,
   View,
 } from "react-native";
-import { CheckCircle2, PartyPopper, ShieldCheck, Users } from "lucide-react-native";
+import { CheckCircle2, HelpCircle, PartyPopper, ShieldCheck, Users } from "lucide-react-native";
 import {
   GlassHeader,
   GradientButton,
@@ -154,6 +154,17 @@ export default function GroupDetailScreen() {
         </View>
       }
     >
+      {!IS_MOCK_UI && apiGroup?.reserveDefaultCoverPrompt?.fullyCovered ? (
+        <PremiumCard variant="flat" style={styles.reservePrompt} animate={false}>
+          <View style={styles.reservePromptRow}>
+            <PremiumIcon icon={HelpCircle} size="md" color={tokens.colors.primary} />
+            <Text style={styles.reservePromptText}>
+              {apiGroup.reserveDefaultCoverPrompt.message}
+            </Text>
+          </View>
+        </PremiumCard>
+      ) : null}
+
       {latestPayoutNotif ? (
         <PremiumCard style={styles.celebrate} animate={false}>
           <View style={styles.celebrateRow}>
@@ -309,6 +320,15 @@ const styles = StyleSheet.create({
     marginTop: 8,
     letterSpacing: 1,
     textTransform: "uppercase",
+  },
+  reservePrompt: { marginBottom: 12 },
+  reservePromptRow: { flexDirection: "row", alignItems: "flex-start", gap: 10 },
+  reservePromptText: {
+    flex: 1,
+    fontFamily: fonts.body,
+    fontSize: 14,
+    color: tokens.colors.onSurfaceVariant,
+    lineHeight: 20,
   },
   celebrate: {
     marginBottom: 12,

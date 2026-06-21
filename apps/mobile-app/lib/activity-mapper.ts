@@ -18,7 +18,13 @@ function formatRelativeTime(iso: string): string {
 function activityTypeFromNotification(type: string): ActivityItem["type"] {
   const t = type.toUpperCase();
   if (t.includes("PAYOUT")) return "payout";
-  if (t.includes("PAYMENT") || t.includes("CONTRIBUTION")) return "contribution";
+  if (
+    t.includes("PAYMENT") ||
+    t.includes("CONTRIBUTION") ||
+    t.includes("RESERVE")
+  ) {
+    return "contribution";
+  }
   if (t.includes("VERIFY") || t.includes("TRUST")) return "system";
   if (t.includes("GROUP") || t.includes("CIRCLE")) return "circle";
   return "system";
@@ -28,7 +34,13 @@ function notificationCategory(type: string): NotificationItem["category"] {
   const t = type.toUpperCase();
   if (t.includes("PAYOUT")) return "payout";
   if (t.includes("VERIFY") || t.includes("TRUST")) return "verification";
-  if (t.includes("PAYMENT") || t.includes("CONTRIBUTION")) return "contribution";
+  if (
+    t.includes("PAYMENT") ||
+    t.includes("CONTRIBUTION") ||
+    t.includes("RESERVE")
+  ) {
+    return "contribution";
+  }
   return "promo";
 }
 
@@ -41,7 +53,9 @@ export function notificationsToActivity(notifications: NotificationRow[]): Activ
     time: formatRelativeTime(n.createdAt),
     highlight:
       n.type.toUpperCase().includes("PAYOUT") ||
-      n.title.includes("Your Turn"),
+      n.type.toUpperCase().includes("RESERVE") ||
+      n.title.includes("Your Turn") ||
+      n.title.toLowerCase().includes("reserve"),
     raw: n,
   }));
 }

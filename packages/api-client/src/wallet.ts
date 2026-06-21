@@ -16,12 +16,16 @@ export type ReserveDetail = {
   remainingContributionCount?: number;
 };
 
+import type { ReserveDefaultCoverPrompt } from "./types";
+
 export type WalletSummary = {
   accountId: string;
   currency: string;
   balance: string;
   availableBalance: string;
   reservedBalance?: string;
+  /** CYCLE security deposits held in escrow (not withdrawable). */
+  depositEscrowBalance?: string;
   totalBalance?: string;
   pendingWithdrawals: string;
   nextReserveUnlockAmount?: string;
@@ -32,6 +36,7 @@ export type WalletSummary = {
   payoutsCreditedCount?: number;
   totalEarningsRecorded?: string;
   totalWithdrawn: string;
+  reserveDefaultCoverPrompt?: ReserveDefaultCoverPrompt | null;
 };
 
 export type WalletActivityResponse = {

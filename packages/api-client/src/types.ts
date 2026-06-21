@@ -68,6 +68,14 @@ export type MemberGroupSummary = {
   remainingDays: number;
   contributionStatus: string | null;
   cycleStanding: string;
+  reserveDefaultCoverPrompt?: ReserveDefaultCoverPrompt | null;
+};
+
+export type ReserveDefaultCoverPrompt = {
+  groupId: string;
+  groupName: string;
+  fullyCovered: boolean;
+  message: string;
 };
 
 export type MemberGroupsResponse = {

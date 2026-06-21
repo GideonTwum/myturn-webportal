@@ -17,6 +17,7 @@ import { MemberParticipationService } from "../member/member-participation.servi
 import { NotificationsService } from "../notifications/notifications.service";
 import { AuditLogsService } from "../audit-logs/audit-logs.service";
 import { PrismaService } from "../prisma/prisma.service";
+import { DefaultProtectionService } from "../cycle-risk/default-protection.service";
 import { FinancialAllocationService } from "../ledger-accounts/financial-allocation.service";
 import { LedgerAccountService } from "../ledger-accounts/ledger-account.service";
 import { LedgerPostingService } from "../ledger-accounts/ledger-posting.service";
@@ -46,6 +47,7 @@ export class WithdrawalsService {
     private audit: AuditLogsService,
     private participation: MemberParticipationService,
     private idempotency: IdempotencyService,
+    private defaultProtection: DefaultProtectionService,
   ) {
     this.disbursement = createDisbursementProvider();
   }
@@ -145,6 +147,10 @@ export class WithdrawalsService {
     const phone = params.momoNumber.replace(/\D/g, "");
     if (phone.length < 9) {
       throw new BadRequestException("Valid MoMo number required");
+    }
+
+    if (params.actorRole === WithdrawalActorRole.MEMBER) {
+      await this.defaultProtection.assertWithdrawalNotRestricted(params.actorId);
     }
 
     const summary =
@@ -629,8 +635,6 @@ export class WithdrawalsService {
       });
     });
 
-    await this.allocation.syncLegacyMemberWallet(updated.actorId);
-
     const isAdmin = updated.actorRole === WithdrawalActorRole.ADMIN;
     await this.notifications.create(
       updated.actorId,
@@ -701,8 +705,6 @@ export class WithdrawalsService {
         },
       });
     });
-
-    await this.allocation.syncLegacyMemberWallet(updated.actorId);
 
     const isAdmin = updated.actorRole === WithdrawalActorRole.ADMIN;
     await this.notifications.create(

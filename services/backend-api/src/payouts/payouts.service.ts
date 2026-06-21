@@ -9,8 +9,9 @@ import {
   UserRole,
 } from "@prisma/client";
 import { Decimal } from "@prisma/client/runtime/library";
-import { summarizeCycle } from "@myturn/shared";
+import { selectPayoutRecipient, summarizeCycle } from "@myturn/shared";
 import { memberCyclePaymentDays } from "../common/member-cycle-payment-days";
+import { assertCycleContributionsReadyForFinalize } from "./payout-contribution-readiness";
 import { CycleComplianceService } from "../cycle-risk/cycle-compliance.service";
 import { CycleDepositsService } from "../cycle-risk/cycle-deposits.service";
 import { AuditLogsService } from "../audit-logs/audit-logs.service";
@@ -62,33 +63,18 @@ export class PayoutsService {
       throw new NotFoundException("Group not found");
     }
     if (peek.payoutMode === PayoutMode.CYCLE) {
-      const rows = peek.members.map((m) => ({
+      const queue = peek.members.map((m) => ({
         userId: m.userId,
+        turnOrder: m.turnOrder,
+        effectivePayoutOrder: m.effectivePayoutOrder,
         cycleStanding: m.cycleStanding,
       }));
-      if (
-        this.cycleCompliance.hasBlockingDefaults(
-          rows,
-          peek.allowPayoutOverride,
-        )
-      ) {
+      const selection = selectPayoutRecipient(queue, cycleNumber, {
+        allowOverride: peek.allowPayoutOverride,
+      });
+      if (!selection.recipient) {
         throw new BadRequestException(
-          "Cannot finalize: one or more members are DEFAULTED. Resolve compliance, replace members, or enable payout override in cycle risk settings.",
-        );
-      }
-      const n = peek.members.length;
-      const turnIndex = (cycleNumber - 1) % n;
-      const recipient = peek.members[turnIndex];
-      if (
-        recipient &&
-        this.cycleCompliance.recipientBlocked(
-          recipient.userId,
-          rows,
-          peek.allowPayoutOverride,
-        )
-      ) {
-        throw new BadRequestException(
-          "Cannot finalize: payout recipient is DEFAULTED. Use override or replace the member.",
+          "Cannot finalize: no eligible payout recipient (all members are DEFAULTED). Resolve compliance or replace members.",
         );
       }
     }
@@ -143,9 +129,7 @@ export class PayoutsService {
         if (contribs.length !== n) {
           throw new BadRequestException("Contribution rows missing for cycle");
         }
-        if (!contribs.every((c) => c.status === ContributionStatus.PAID)) {
-          throw new BadRequestException("All contributions must be paid first");
-        }
+        assertCycleContributionsReadyForFinalize(contribs, group.members);
 
         const existing = await tx.payout.findFirst({
           where: { groupId, cycleNumber },
@@ -165,13 +149,36 @@ export class PayoutsService {
           memberCyclePaymentDays(group),
         );
 
-        const turnIndex = (cycleNumber - 1) % n;
-        const recipient = group.members[turnIndex];
+        const queue = group.members.map((m) => ({
+          userId: m.userId,
+          turnOrder: m.turnOrder,
+          effectivePayoutOrder: m.effectivePayoutOrder,
+          cycleStanding: m.cycleStanding,
+        }));
+        const selection = selectPayoutRecipient(queue, cycleNumber, {
+          allowOverride: group.allowPayoutOverride,
+        });
+        const recipientUserId = selection.recipient?.userId;
+        const recipient = group.members.find((m) => m.userId === recipientUserId);
         if (!recipient) {
-          throw new BadRequestException("Could not resolve payout recipient");
+          throw new BadRequestException(
+            "Could not resolve payout recipient — no eligible member for this cycle",
+          );
         }
 
         const payoutAmount = fromMinor(summaryVal.netAfterMarginMinor);
+        const payoutMetadata: Prisma.InputJsonValue = {
+          walletCredit: true,
+          ...(selection.skippedDefaulted.length > 0
+            ? {
+                payoutTurnSkippedDefaulted: selection.skippedDefaulted.map(
+                  (s) => s.userId,
+                ),
+                nominalRecipientUserId:
+                  selection.nominalRecipient?.userId ?? null,
+              }
+            : {}),
+        };
 
         const payoutRow = await tx.payout.create({
           data: {
@@ -181,7 +188,7 @@ export class PayoutsService {
             amount: payoutAmount,
             status: PayoutStatus.CREDITED,
             creditedAt: new Date(),
-            metadata: { walletCredit: true },
+            metadata: payoutMetadata,
           },
         });
 
@@ -246,7 +253,11 @@ export class PayoutsService {
           }
           if (group.payoutMode === PayoutMode.CYCLE) {
             await tx.groupMember.updateMany({
-              where: { groupId, status: "ACTIVE" },
+              where: {
+                groupId,
+                status: "ACTIVE",
+                cycleStanding: MemberCycleStanding.LATE,
+              },
               data: { cycleStanding: MemberCycleStanding.ACTIVE },
             });
           }
@@ -325,6 +336,40 @@ export class PayoutsService {
       );
     }
 
+    const skippedDefaulted =
+      payout.metadata &&
+      typeof payout.metadata === "object" &&
+      Array.isArray(
+        (payout.metadata as Record<string, unknown>).payoutTurnSkippedDefaulted,
+      )
+        ? ((payout.metadata as Record<string, unknown>)
+            .payoutTurnSkippedDefaulted as string[])
+        : [];
+
+    if (skippedDefaulted.length > 0) {
+      await this.audit.append({
+        actorId: finalizedByUserId,
+        action: "PAYOUT_TURN_SKIPPED_DEFAULTED_MEMBER",
+        entityType: "Payout",
+        entityId: payout.id,
+        metadata: {
+          groupId,
+          cycleNumber,
+          skippedUserIds: skippedDefaulted,
+          recipientId: payout.recipientId,
+        },
+      });
+      for (const skippedUserId of skippedDefaulted) {
+        await this.notifications.create(
+          skippedUserId,
+          "Payout turn skipped",
+          `Your payout turn was skipped because of unresolved contributions in ${groupName}. Settle your balance to become eligible again.`,
+          "PAYOUT_TURN_SKIPPED_DEFAULT",
+          { groupId, cycleNumber, payoutId: payout.id },
+        );
+      }
+    }
+
     await this.audit.append({
       actorId: finalizedByUserId,
       action: "FINALIZE_CYCLE_WALLET_CREDIT",
@@ -336,6 +381,7 @@ export class PayoutsService {
         groupCompleted,
         nextCycle,
         walletCredit: true,
+        payoutTurnSkippedDefaulted: skippedDefaulted,
         finalReserveReleases: groupFinalReserveReleases.map((r) => ({
           reserveId: r.reserveId,
           userId: r.userId,
@@ -347,12 +393,6 @@ export class PayoutsService {
     if (groupFinalReserveReleases.length > 0) {
       for (const release of groupFinalReserveReleases) {
         await this.reserve.notifyGroupCompletedReserveRelease(release);
-      }
-      const releasedUserIds = [
-        ...new Set(groupFinalReserveReleases.map((r) => r.userId)),
-      ];
-      for (const userId of releasedUserIds) {
-        await this.allocation.syncLegacyMemberWallet(userId);
       }
     }
 
