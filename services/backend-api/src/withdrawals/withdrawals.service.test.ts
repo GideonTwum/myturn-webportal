@@ -166,6 +166,76 @@ describe("WithdrawalsService", () => {
     expect(result.amount.toString()).toBe("42000");
   });
 
+  it("rejects invalid withdrawal amount abc with 400", async () => {
+    await expect(
+      svc.createMemberWithdrawal("user-1", "abc", "233241234567"),
+    ).rejects.toThrow(/Please enter a valid withdrawal amount/);
+    expect(allocation.getMemberWalletSummary).not.toHaveBeenCalled();
+  });
+
+  it("rejects empty withdrawal amount with 400", async () => {
+    await expect(
+      svc.createMemberWithdrawal("user-1", "   ", "233241234567"),
+    ).rejects.toThrow(/Please enter a valid withdrawal amount/);
+  });
+
+  it("rejects negative and zero withdrawal amounts with 400", async () => {
+    await expect(
+      svc.createMemberWithdrawal("user-1", "-100", "233241234567"),
+    ).rejects.toThrow(/Please enter a valid withdrawal amount/);
+    await expect(
+      svc.createMemberWithdrawal("user-1", "0", "233241234567"),
+    ).rejects.toThrow(/Please enter a valid withdrawal amount/);
+  });
+
+  it("parses comma-formatted withdrawal amount when balance is sufficient", async () => {
+    allocation.getMemberWalletSummary.mockResolvedValue({
+      availableBalance: "50000.00",
+      reservedBalance: "0.00",
+      accountId: "acct-member",
+    });
+
+    const pending = baseRow({ amount: new Prisma.Decimal("10000") });
+    const processing = baseRow({
+      amount: new Prisma.Decimal("10000"),
+      status: WithdrawalStatus.PROCESSING,
+      provider: "mock-disbursement",
+      providerRef: "disb-mock-wd-1",
+    });
+    const completed = baseRow({
+      amount: new Prisma.Decimal("10000"),
+      status: WithdrawalStatus.COMPLETED,
+      provider: "mock-disbursement",
+      providerRef: "disb-mock-wd-1",
+      processedAt: new Date(),
+    });
+
+    prisma.withdrawalRequest.create.mockResolvedValue(pending);
+    prisma.withdrawalRequest.findUnique.mockImplementation(async () => processing);
+    prisma.withdrawalRequest.findFirst.mockResolvedValue(processing);
+    prisma.withdrawalRequest.findUniqueOrThrow.mockImplementation(async () => {
+      const u = prisma.withdrawalRequest.update.mock.calls.length;
+      return u > 1 ? completed : processing;
+    });
+    prisma.withdrawalRequest.update
+      .mockResolvedValueOnce(processing)
+      .mockResolvedValueOnce(completed);
+
+    const result = await svc.createMemberWithdrawal(
+      "user-1",
+      "10,000",
+      "233241234567",
+    );
+    expect(result.status).toBe("COMPLETED");
+    expect(prisma.withdrawalRequest.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          amount: expect.objectContaining({ toString: expect.any(Function) }),
+        }),
+      }),
+    );
+  });
+
   it("rejects member withdrawal when default protection restricts account", async () => {
     defaultProtection.assertWithdrawalNotRestricted.mockRejectedValueOnce(
       new BadRequestException(

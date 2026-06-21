@@ -219,7 +219,8 @@ export class PayoutsService {
             memberCount: n,
             serviceMarginBps: group.serviceMarginBps,
             daysPerCycle: memberCyclePaymentDays(group),
-            payoutPosition: recipient.turnOrder,
+            /** Payout sequence position (cycle number), not turnOrder. */
+            payoutPosition: cycleNumber,
             totalPositions: n,
           },
         );

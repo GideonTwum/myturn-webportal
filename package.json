@@ -29,6 +29,8 @@
     "repair:legacy-wallet:staging:execute": "npm run repair:legacy-wallet:staging:execute -w backend-api",
     "build:railway": "npm run build:shared && npm run build -w backend-api",
     "verify:railway": "node scripts/verify-railway-health.mjs",
+    "staging:uat:breaktest": "node scripts/staging-mock-uat-breaktest.mjs",
+    "staging:uat:default": "node services/backend-api/scripts/staging-default-completion-uat.mjs",
     "test:otp": "npm run test:otp -w backend-api && node scripts/test-otp-staging.mjs",
     "db:wipe:local": "npm run db:wipe:local -w backend-api",
     "cleanup:keep-big-men-group": "npm run cleanup:keep-big-men-group -w backend-api",

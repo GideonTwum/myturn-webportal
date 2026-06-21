@@ -76,6 +76,29 @@ describe("ContributionGuaranteeReserveService", () => {
       expect(split.availableMinor).toBe(500_000n);
       vi.unstubAllEnvs();
     });
+
+    it("creates 24% original reserve for 5-member position 1 (GHS 14,250 net)", () => {
+      vi.stubEnv("CONTRIBUTION_RESERVE_ENABLED", "true");
+      vi.stubEnv("CONTRIBUTION_RESERVE_MAX_BPS", "3000");
+      const netMinor = 1_425_000n; // 5 × GHS 300 × 10 days − 5% margin
+      const split = svc.computeSplit(netMinor, 1, 5, 10);
+      expect(split.reserveBps).toBe(2400);
+      expect(split.reserveMinor).toBe(342_000n);
+      expect(split.availableMinor).toBe(1_083_000n);
+      expect(split.postPayoutContributionUnits).toBe(40);
+      vi.unstubAllEnvs();
+    });
+
+    it("does not confuse payment units with payout position (regression)", () => {
+      vi.stubEnv("CONTRIBUTION_RESERVE_ENABLED", "true");
+      vi.stubEnv("CONTRIBUTION_RESERVE_MAX_BPS", "3000");
+      const netMinor = 1_125_000n;
+      const wrongSplit = svc.computeSplit(netMinor, 35, 40, 10);
+      expect(wrongSplit.reserveBps).toBe(375);
+      const correctSplit = svc.computeSplit(netMinor, 1, 5, 10);
+      expect(correctSplit.reserveBps).toBe(2400);
+      vi.unstubAllEnvs();
+    });
   });
 
   describe("tryReleaseOnPaymentSettledInTx", () => {

@@ -30,6 +30,7 @@ import {
   assertWithdrawalWithinLimits,
   getStaleWithdrawalThresholdMs,
 } from "./withdrawal-limits";
+import { parseWithdrawalAmount } from "./parse-withdrawal-amount";
 
 const STALE_PROCESSING_MS = 30_000;
 
@@ -140,10 +141,7 @@ export class WithdrawalsService {
     momoNumber: string;
     automatic: boolean;
   }) {
-    const amountDec = new Prisma.Decimal(params.amount.replace(/,/g, "").trim());
-    if (amountDec.lte(0)) {
-      throw new BadRequestException("Amount must be positive");
-    }
+    const amountDec = parseWithdrawalAmount(params.amount);
     const phone = params.momoNumber.replace(/\D/g, "");
     if (phone.length < 9) {
       throw new BadRequestException("Valid MoMo number required");

@@ -73,4 +73,55 @@ npm run typecheck -w web-portal
 npm run typecheck -w mobile-app
 npm run build -w @myturn/api-client
 STAGING_API_URL=https://YOUR_RAILWAY_HOST.up.railway.app/api npm run verify:railway
+STAGING_API_URL=https://YOUR_RAILWAY_HOST.up.railway.app/api npm run staging:uat:breaktest
+STAGING_UAT=1 STAGING_API_URL=https://YOUR_RAILWAY_HOST.up.railway.app/api npm run staging:uat:default
 ```
+
+Optional 50-member stress (break-test):
+
+```bash
+STAGING_UAT_LARGE=1 STAGING_API_URL=https://YOUR_RAILWAY_HOST.up.railway.app/api npm run staging:uat:breaktest
+```
+
+## Automated break-test (`staging:uat:breaktest`)
+
+API-only harness: small-group happy path, role isolation, duplicate join, 20-member stress, member mock-approve path, withdrawal validation, reserve ledger diagnostics (`originalReserve` vs `remainingReserve` in wallet `reserveDetails` + allocation journal metadata).
+
+## Default / completion UAT (`staging:uat:default`)
+
+Script-only (never exposed as public API). Requires `STAGING_UAT=1` or `DEPLOYMENT_TIER=staging`, `STAGING_API_URL`, and `services/backend-api/.env.railway-public` for guarded `groupStartDate` backdate. Does **not** wipe the database.
+
+Scenarios: post-payout default, pre-payout default, recovery, group completion.
+
+Limit to specific scenarios:
+
+```bash
+STAGING_UAT_SCENARIOS=postPayoutDefault,completion STAGING_UAT=1 STAGING_API_URL=... npm run staging:uat:default
+```
+
+## Real-device Arkesel OTP smoke checklist
+
+Manual checklist (Arkesel stays enabled on staging):
+
+| # | Step | Expected |
+|---|------|----------|
+| 1 | Install/open app with `EXPO_PUBLIC_API_URL` pointing at staging Railway API | App loads, API calls hit Railway |
+| 2 | Sign up with a **real** Ghana phone number | OTP request succeeds |
+| 3 | Receive Arkesel SMS OTP | SMS arrives within ~1 minute |
+| 4 | Enter OTP and complete signup | Login succeeds, member session created |
+| 5 | Sign out | Session cleared |
+| 6 | Log in again with same phone | OTP sent again |
+| 7 | Confirm **no debug OTP** shown in app UI or API response | Production-like UX |
+| 8 | Trigger OTP twice quickly | Rate limit is reasonable (not blocked forever) |
+| 9 | Confirm SMS **sender ID** displays correctly on device | Matches Arkesel configured sender |
+
+## Reserve diagnostics (UAT-02)
+
+When investigating small-group reserves, compare:
+
+- Ledger allocation journal: `metadata.reserveBps`, `metadata.reserved`, `metadata.net`, `metadata.cycleNumber`
+- Wallet API `reserveDetails`: `originalReserveAmount`, `remainingReserveAmount`, `releasedAmount`
+- Wallet balances: `availableBalance` + `reservedBalance` (read-time; remaining reserve may be lower after post-payout payments)
+
+For a 5-member CYCLE group, cycle 1 recipient should show **2400 bps (~24%)** at creation when `CONTRIBUTION_RESERVE_MAX_BPS=3000`.
+
