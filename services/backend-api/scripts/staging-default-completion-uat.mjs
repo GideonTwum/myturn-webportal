@@ -97,11 +97,17 @@ async function joinMember(inviteCode, phone, name, suffix) {
     },
   });
   if (!r.ok) throw new Error(`Join ${phone}: ${JSON.stringify(r.raw).slice(0, 200)}`);
+  const userId =
+    r.data?.user?.id ?? r.raw?.user?.id ?? r.data?.userId ?? r.data?.sub ?? r.raw?.sub;
+  const token = r.data?.access_token ?? r.raw?.access_token ?? r.data?.accessToken;
+  if (!userId || !token) {
+    throw new Error(`Join missing user.id/token: ${JSON.stringify(r.raw).slice(0, 200)}`);
+  }
   return {
-    userId: r.data.userId ?? r.data.sub,
-    token: r.data.access_token ?? r.data.accessToken,
+    userId,
+    token,
     phone,
-    email: r.data.email ?? null,
+    email: r.data?.user?.email ?? r.raw?.user?.email ?? null,
   };
 }
 
@@ -175,20 +181,18 @@ async function syncCompliance(adminToken, groupId) {
   return api("GET", `/groups/${groupId}/payout-readiness`, { token: adminToken });
 }
 
-async function ledgerBalances(prisma, userId) {
-  const accounts = await prisma.ledgerAccount.findMany({
-    where: {
-      OR: [
-        { ownerId: userId },
-        { type: { in: ["MYTURN_REVENUE", "GROUP_POOL"] } },
-      ],
-    },
+async function ledgerBalances(prisma, userId, groupId) {
+  const keys = [
+    `MEMBER_WALLET_AVAILABLE:${userId}:GHS`,
+    `MEMBER_WALLET_RESERVED:${userId}:GHS`,
+    `MEMBER_DEPOSIT_ESCROW:${userId}:GHS`,
+    ...(groupId ? [`GROUP_POOL:${groupId}:GHS`] : []),
+    "MYTURN_REVENUE:GHS",
+  ];
+  const rows = await prisma.ledgerAccount.findMany({
+    where: { accountKey: { in: keys } },
   });
-  const ledger = {};
-  for (const a of accounts) {
-    const key = a.ownerId ? `${a.type}:${a.ownerId}:${a.currency}` : `${a.type}:${a.currency}`;
-    ledger[key] = a.balance.toString();
-  }
+  const ledger = Object.fromEntries(rows.map((r) => [r.accountKey, r.balance.toString()]));
   return { ledger };
 }
 
@@ -215,7 +219,7 @@ async function runPostPayoutDefault(prisma, adminToken, hqToken) {
   const reserve = await prisma.contributionGuaranteeReserve.findFirst({
     where: { userId: recipient.userId, groupId },
   });
-  const balAfter = await ledgerBalances(prisma, recipient.userId);
+  const balAfter = await ledgerBalances(prisma, recipient.userId, groupId);
   t.steps.push({
     step: "post-payout reserve",
     reserveBps: reserve?.reserveBps ?? null,
@@ -237,7 +241,7 @@ async function runPostPayoutDefault(prisma, adminToken, hqToken) {
   const cov = await prisma.defaultCoverage.findMany({
     where: { userId: recipient.userId, groupId },
   });
-  const balAfterDefault = await ledgerBalances(prisma, recipient.userId);
+  const balAfterDefault = await ledgerBalances(prisma, recipient.userId, groupId);
   const notif = await prisma.notification.findMany({
     where: {
       userId: recipient.userId,
@@ -463,7 +467,7 @@ async function runCompletion(prisma, adminToken, hqToken) {
   });
   const payoutCount = await prisma.payout.count({ where: { groupId } });
   const recipient0 = members[0];
-  const bal = await ledgerBalances(prisma, recipient0.userId);
+  const bal = await ledgerBalances(prisma, recipient0.userId, groupId);
   const wallet = await api("GET", "/member/wallet", { token: recipient0.token });
   const recon = await api("GET", "/hq/reconciliation/summary", { token: hqToken });
 
